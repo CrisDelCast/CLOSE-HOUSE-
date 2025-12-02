@@ -1,0 +1,278 @@
+:root {
+  font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI',
+    sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  color: #0f172a;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: #f1f5f9;
+  color: #0f172a;
+}
+
+a {
+  color: inherit;
+}
+
+.app-shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1.5rem 2rem;
+  background: #fff;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.app-header h1 {
+  margin: 0 0 0.25rem;
+  font-size: 1.5rem;
+}
+
+.app-header__tenant {
+  margin: 0;
+  color: #475569;
+}
+
+.app-header__user {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.app-header__user-name {
+  margin: 0;
+  font-weight: 600;
+}
+
+.app-nav {
+  display: flex;
+  gap: 1rem;
+  padding: 0 2rem;
+  border-bottom: 1px solid #e2e8f0;
+  background: #fff;
+}
+
+.link {
+  padding: 1rem 0;
+  text-decoration: none;
+  color: #475569;
+  border-bottom: 2px solid transparent;
+  font-weight: 500;
+}
+
+.link--active {
+  border-color: #2563eb;
+  color: #1d4ed8;
+}
+
+.app-main {
+  flex: 1;
+  padding: 2rem;
+}
+
+.login-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(
+    135deg,
+    rgba(59, 130, 246, 0.15),
+    rgba(147, 197, 253, 0.3)
+  );
+  padding: 1rem;
+}
+
+.card {
+  background: #fff;
+  border-radius: 1rem;
+  padding: 1.5rem;
+  box-shadow:
+    0 10px 15px -3px rgba(15, 23, 42, 0.05),
+    0 4px 6px -4px rgba(15, 23, 42, 0.1);
+  border: 1px solid #e2e8f0;
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.grid {
+  display: grid;
+  gap: 1.5rem;
+}
+
+.two-columns {
+  grid-template-columns: 1.6fr 1fr;
+}
+
+@media (max-width: 1024px) {
+  .two-columns {
+    grid-template-columns: 1fr;
+  }
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+table th,
+table td {
+  padding: 0.75rem;
+  border-bottom: 1px solid #e2e8f0;
+  text-align: left;
+  vertical-align: top;
+}
+
+table th {
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #475569;
+}
+
+.form-grid {
+  display: grid;
+  gap: 1rem;
+}
+
+label {
+  display: flex;
+  flex-direction: column;
+  font-size: 0.9rem;
+  color: #475569;
+  gap: 0.35rem;
+}
+
+input,
+select,
+textarea {
+  border: 1px solid #cbd5f5;
+  border-radius: 0.5rem;
+  padding: 0.65rem 0.8rem;
+  font-size: 1rem;
+  font-family: inherit;
+  transition: border-color 0.2s ease;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  outline: none;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+}
+
+.btn {
+  border: none;
+  border-radius: 0.6rem;
+  padding: 0.75rem 1.25rem;
+  font-size: 1rem;
+  font-weight: 600;
+  background: #2563eb;
+  color: #fff;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.btn:hover {
+  background: #1d4ed8;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn--ghost {
+  background: transparent;
+  color: #1e293b;
+  border: 1px solid #cbd5f5;
+}
+
+.btn--small {
+  padding: 0.5rem 0.75rem;
+  font-size: 0.85rem;
+}
+
+.form-error {
+  color: #dc2626;
+  font-weight: 600;
+}
+
+.form-feedback {
+  color: #059669;
+  font-weight: 600;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.2rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  background: #e2e8f0;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.badge--pending {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.badge--in {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.badge--out {
+  background: #e0e7ff;
+  color: #3730a3;
+}
+
+.badge--denied {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.login-page .card {
+  width: min(420px, 100%);
+}
+
+.page {
+  padding: 2rem;
+}
+
+.page--center {
+  min-height: 50vh;
+  display: grid;
+  place-items: center;
+}
+
+.actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
