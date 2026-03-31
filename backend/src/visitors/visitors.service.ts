@@ -154,6 +154,7 @@ export class VisitorsService {
       visitorName: visitor.fullName,
       purpose: visitor.purpose,
       documentId: visitor.documentId,
+      email: resident?.email,
     });
   }
 }
