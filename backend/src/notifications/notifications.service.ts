@@ -1,7 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Twilio } from 'twilio';
-import * as nodemailer from 'nodemailer';
-import type { Transporter } from 'nodemailer';
+import { Resend } from 'resend';
 
 interface VisitNotificationPayload {
   to?: string;
@@ -19,7 +18,7 @@ export class NotificationsService {
   private readonly client?: Twilio;
   private readonly fromWhatsApp?: string;
   private readonly defaultToWhatsApp?: string;
-  private readonly mailTransport?: Transporter;
+  private readonly resend?: Resend;
   private readonly fromEmail?: string;
   private readonly defaultToEmail?: string;
 
@@ -28,16 +27,9 @@ export class NotificationsService {
     const authToken = process.env.TWILIO_AUTH_TOKEN;
     const fromWhatsApp = process.env.TWILIO_WHATSAPP_FROM;
     const defaultToWhatsApp = process.env.TWILIO_WHATSAPP_DEFAULT_TO;
-    const smtpHost = process.env.SMTP_HOST;
-    const smtpPort = process.env.SMTP_PORT
-      ? Number(process.env.SMTP_PORT)
-      : undefined;
-    const smtpUser = process.env.SMTP_USER;
-    const smtpPass = process.env.SMTP_PASS;
-    const smtpSecure =
-      process.env.SMTP_SECURE?.toLowerCase() === 'true' || false;
-    const fromEmail = process.env.SMTP_FROM;
-    const defaultToEmail = process.env.SMTP_DEFAULT_TO;
+    const resendApiKey = process.env.RESEND_API_KEY;
+    const fromEmail = process.env.RESEND_FROM;
+    const defaultToEmail = process.env.RESEND_DEFAULT_TO;
 
     this.fromWhatsApp = fromWhatsApp
       ? this.normalizeWhatsApp(fromWhatsApp)
@@ -54,26 +46,14 @@ export class NotificationsService {
       );
     }
 
-    if (smtpHost && smtpPort && fromEmail) {
-      this.mailTransport = nodemailer.createTransport({
-        host: smtpHost,
-        port: smtpPort,
-        secure: smtpSecure,
-        auth:
-          smtpUser && smtpPass
-            ? {
-                user: smtpUser,
-                pass: smtpPass,
-              }
-            : undefined,
-      });
-
-      this.logger.log(
-        `SMTP configurado: host=${smtpHost} port=${smtpPort} secure=${smtpSecure} auth=${smtpUser ? 'on' : 'off'}`,
-      );
+    if (resendApiKey && fromEmail) {
+      this.resend = new Resend(resendApiKey);
+      this.fromEmail = fromEmail;
+      this.defaultToEmail = defaultToEmail;
+      this.logger.log('Resend configurado para envío por API HTTP.');
     } else {
       this.logger.log(
-        'SMTP no configurado (faltan SMTP_HOST/SMTP_PORT/SMTP_FROM); envío de correos desactivado.',
+        'Resend no configurado (faltan RESEND_API_KEY/RESEND_FROM); envío de correos desactivado.',
       );
     }
   }
@@ -158,26 +138,31 @@ export class NotificationsService {
     to: string;
     subject: string;
     text: string;
-  }) {
-    if (!this.mailTransport || !this.fromEmail) {
+  }): Promise<void> {
+    if (!this.resend || !this.fromEmail) {
       this.logger.warn(
-        `No se envió correo a ${to}: transporte SMTP no configurado.`,
+        `No se envió correo a ${to}: Resend no configurado o falta RESEND_FROM.`,
       );
       return;
     }
 
     this.logger.log(
-      `Intentando enviar correo: to=${to} from=${this.fromEmail} subject="${subject}"`,
+      `Intentando enviar correo (Resend): to=${to} from=${this.fromEmail} subject="${subject}"`,
     );
 
     try {
-      await this.mailTransport.sendMail({
+      const result = await this.resend.emails.send({
         from: this.fromEmail,
         to,
         subject,
         text,
       });
-      this.logger.log(`Correo enviado a ${to}`);
+
+      if (result.error) {
+        throw new Error(result.error.message);
+      }
+
+      this.logger.log(`Correo enviado a ${to} (id: ${result.data?.id ?? 'n/a'})`);
     } catch (error) {
       this.logger.error(
         `Error enviando correo a ${to}: ${error instanceof Error ? error.message : String(error)}`,

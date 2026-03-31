@@ -23,14 +23,10 @@ API en NestJS (TypeScript) para gestionar el control de acceso de multiples unid
    TWILIO_AUTH_TOKEN=tu_token
    TWILIO_WHATSAPP_FROM=whatsapp:+14155238886 # número sandbox de Twilio
    TWILIO_WHATSAPP_DEFAULT_TO=whatsapp:+573001112233 # fallback destino
-   # Correo SMTP (opcional)
-   SMTP_HOST=smtp.tu-proveedor.com
-   SMTP_PORT=587
-   SMTP_SECURE=false # true si usas 465
-   SMTP_USER=tu_usuario # opcional si el servidor permite sin auth
-   SMTP_PASS=tu_password
-   SMTP_FROM="Control Acceso <no-reply@tudominio.com>"
-   SMTP_DEFAULT_TO=correo@destino.com # fallback si el residente no tiene email
+   # Correo via API HTTP (Resend)
+   RESEND_API_KEY=tu_api_key_resend
+   RESEND_FROM="Control Acceso <notificaciones@tudominio.com>"
+   RESEND_DEFAULT_TO=correo@destino.com # fallback si el residente no tiene email
    ```
 3. Levantar el backend
    ```bash
@@ -73,8 +69,8 @@ API en NestJS (TypeScript) para gestionar el control de acceso de multiples unid
 - Los números deben ir en formato `whatsapp:+<código_pais><numero>` y estar autorizados en el sandbox de Twilio.
 
 ### Notificaciones por correo (opcional)
-- Configura SMTP (`SMTP_HOST`, `SMTP_PORT`, `SMTP_FROM`, y si aplica `SMTP_USER`/`SMTP_PASS`).
-- Envía un correo al registrar una visita a `resident.email` si existe; de lo contrario a `SMTP_DEFAULT_TO`.
+- Configura Resend con `RESEND_API_KEY` y `RESEND_FROM`.
+- Envía un correo al registrar una visita a `resident.email` si existe; de lo contrario a `RESEND_DEFAULT_TO`.
 - El contenido es un texto simple con datos del visitante.
 
 ## Procedimiento recomendado
