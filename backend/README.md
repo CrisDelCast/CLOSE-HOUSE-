@@ -1,4 +1,4 @@
-﻿# Control de Acceso - Backend
+# Control de Acceso - Backend
 
 API en NestJS (TypeScript) para gestionar el control de acceso de multiples unidades residenciales con aislamiento por tenant.
 
@@ -18,6 +18,11 @@ API en NestJS (TypeScript) para gestionar el control de acceso de multiples unid
    DB_SSL=true # o false si usas Postgres local
    JWT_SECRET=cualquier_clave_segura
    PORT=3000
+   # Notificaciones (opcional, Twilio WhatsApp sandbox)
+   TWILIO_ACCOUNT_SID=tu_sid
+   TWILIO_AUTH_TOKEN=tu_token
+   TWILIO_WHATSAPP_FROM=whatsapp:+14155238886 # número sandbox de Twilio
+   TWILIO_WHATSAPP_DEFAULT_TO=whatsapp:+573001112233 # fallback destino
    ```
 3. Levantar el backend
    ```bash
@@ -51,6 +56,13 @@ API en NestJS (TypeScript) para gestionar el control de acceso de multiples unid
    - `PATCH /api/visitors/:id/check-in` - marca ingreso y registra al usuario que autorizó.
    - `PATCH /api/visitors/:id/check-out` - registra la salida del visitante.
    - `PATCH /api/visitors/:id/deny` - rechaza la visita (opcionalmente con nota).
+
+### Notificaciones por WhatsApp (opcional)
+- Usa Twilio (WhatsApp sandbox) si configuras `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN` y `TWILIO_WHATSAPP_FROM`.
+- Envía un mensaje al registrar una visita. Destinatario:
+  - `resident.phone` cuando la visita está asociada a un residente y tiene teléfono.
+  - `TWILIO_WHATSAPP_DEFAULT_TO` como fallback para pruebas.
+- Los números deben ir en formato `whatsapp:+<código_pais><numero>` y estar autorizados en el sandbox de Twilio.
 
 ## Procedimiento recomendado
 1. Crear tenant (`POST /api/tenants`).
