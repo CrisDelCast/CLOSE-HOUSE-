@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Twilio } from 'twilio';
-import nodemailer, { type Transporter } from 'nodemailer';
+import * as nodemailer from 'nodemailer';
+import type { Transporter } from 'nodemailer';
 
 interface VisitNotificationPayload {
   to?: string;
