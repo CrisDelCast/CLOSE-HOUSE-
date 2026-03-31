@@ -67,6 +67,10 @@ export class NotificationsService {
               }
             : undefined,
       });
+
+      this.logger.log(
+        `SMTP configurado: host=${smtpHost} port=${smtpPort} secure=${smtpSecure} auth=${smtpUser ? 'on' : 'off'}`,
+      );
     } else {
       this.logger.log(
         'SMTP no configurado (faltan SMTP_HOST/SMTP_PORT/SMTP_FROM); envío de correos desactivado.',
@@ -162,6 +166,10 @@ export class NotificationsService {
       return;
     }
 
+    this.logger.log(
+      `Intentando enviar correo: to=${to} from=${this.fromEmail} subject="${subject}"`,
+    );
+
     try {
       await this.mailTransport.sendMail({
         from: this.fromEmail,
@@ -169,6 +177,7 @@ export class NotificationsService {
         subject,
         text,
       });
+      this.logger.log(`Correo enviado a ${to}`);
     } catch (error) {
       this.logger.error(
         `Error enviando correo a ${to}: ${error instanceof Error ? error.message : String(error)}`,
