@@ -1,8 +1,12 @@
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
-import { useAuth } from '../hooks/useAuth';
+import { useAuthContext } from '../context/AuthContext';
 
-const ProtectedRoute = () => {
-  const { user, isInitializing } = useAuth();
+interface ProtectedRouteProps {
+  allowedRoles?: string[]; 
+}
+
+const ProtectedRoute = ({ allowedRoles }: ProtectedRouteProps) => {
+  const { user, isInitializing } = useAuthContext();
   const location = useLocation();
 
   if (isInitializing) {
@@ -16,10 +20,13 @@ const ProtectedRoute = () => {
   if (!user) {
     return <Navigate to="/login" replace state={{ from: location }} />;
   }
+    
+  // Si la ruta pide roles específicos y el usuario no los tiene, lo saca
+  if (allowedRoles && allowedRoles.length > 0 && !allowedRoles.includes(user.role)) {
+    return <Navigate to="/residents" replace />; 
+  }
 
   return <Outlet />;
 };
-
+  
 export default ProtectedRoute;
-
-

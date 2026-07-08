@@ -3,6 +3,8 @@ import type { ChangeEvent, FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { createResident, fetchResidents } from '../api/residents';
 import type { CreateResidentInput, Resident } from '../types';
+import { useAuthContext } from '../context/AuthContext';
+
 
 const initialForm: CreateResidentInput = {
   fullName: '',
@@ -14,6 +16,7 @@ const initialForm: CreateResidentInput = {
 };
 
 const ResidentsPage = () => {
+  const { user } = useAuthContext();
   const queryClient = useQueryClient();
   const { data, isLoading, isError } = useQuery({
     queryKey: ['residents'],
@@ -82,78 +85,79 @@ const ResidentsPage = () => {
           </table>
         )}
       </section>
+      {user?.role === 'ADMIN' && (
+        <section className="card">
+          <h2>Nuevo residente</h2>
+          <form onSubmit={handleSubmit} className="form-grid">
+            <label>
+              Nombre completo
+              <input
+                name="fullName"
+                value={form.fullName}
+                onChange={handleChange}
+                required
+              />
+            </label>
 
-      <section className="card">
-        <h2>Nuevo residente</h2>
-        <form onSubmit={handleSubmit} className="form-grid">
-          <label>
-            Nombre completo
-            <input
-              name="fullName"
-              value={form.fullName}
-              onChange={handleChange}
-              required
-            />
-          </label>
+            <label>
+              Documento
+              <input
+                name="documentId"
+                value={form.documentId}
+                onChange={handleChange}
+                required
+              />
+            </label>
 
-          <label>
-            Documento
-            <input
-              name="documentId"
-              value={form.documentId}
-              onChange={handleChange}
-              required
-            />
-          </label>
+            <label>
+              Correo
+              <input
+                type="email"
+                name="email"
+                value={form.email}
+                onChange={handleChange}
+                required
+              />
+            </label>
 
-          <label>
-            Correo
-            <input
-              type="email"
-              name="email"
-              value={form.email}
-              onChange={handleChange}
-              required
-            />
-          </label>
+            <label>
+              Apartamento
+              <input
+                name="unitNumber"
+                value={form.unitNumber}
+                onChange={handleChange}
+                required
+              />
+            </label>
 
-          <label>
-            Apartamento
-            <input
-              name="unitNumber"
-              value={form.unitNumber}
-              onChange={handleChange}
-              required
-            />
-          </label>
+            <label>
+              Teléfono
+              <input
+                name="phone"
+                value={form.phone ?? ''}
+                onChange={handleChange}
+                placeholder="Opcional"
+              />
+            </label>
 
-          <label>
-            Teléfono
-            <input
-              name="phone"
-              value={form.phone ?? ''}
-              onChange={handleChange}
-              placeholder="Opcional"
-            />
-          </label>
+            <label>
+              Placa
+              <input
+                name="vehiclePlate"
+                value={form.vehiclePlate ?? ''}
+                onChange={handleChange}
+                placeholder="Opcional"
+              />
+            </label>
 
-          <label>
-            Placa
-            <input
-              name="vehiclePlate"
-              value={form.vehiclePlate ?? ''}
-              onChange={handleChange}
-              placeholder="Opcional"
-            />
-          </label>
+            {feedback && <p className="form-feedback">{feedback}</p>}
 
-          {feedback && <p className="form-feedback">{feedback}</p>}
-
-          <button type="submit" className="btn" disabled={createMutation.isPending}>
-            {createMutation.isPending ? 'Guardando...' : 'Crear residente'}
-          </button>
-        </form>
-      </section>
+            <button type="submit" className="btn" disabled={createMutation.isPending}>
+              {createMutation.isPending ? 'Guardando...' : 'Crear residente'}
+            </button>
+          </form>
+        </section>
+      )}
     </div>
   );
 };

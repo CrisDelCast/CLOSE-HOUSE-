@@ -4,13 +4,16 @@ import { TenantId } from '../common/decorators/tenant.decorator';
 import { TenantGuard } from '../common/guards/tenant.guard';
 import { CreateResidentDto } from './dto/create-resident.dto';
 import { ResidentsService } from './residents.service';
+import { RolesGuard } from '../auth/guards/roles.guard'; 
+import { Roles } from '../auth/decorators/roles.decorator';
 
-@UseGuards(JwtAuthGuard, TenantGuard)
+@UseGuards(JwtAuthGuard, TenantGuard, RolesGuard)
 @Controller('residents')
 export class ResidentsController {
   constructor(private readonly residentsService: ResidentsService) {}
 
   @Post()
+  @Roles('ADMIN')
   create(
     @TenantId() tenantId: string,
     @Body() createResidentDto: CreateResidentDto,
