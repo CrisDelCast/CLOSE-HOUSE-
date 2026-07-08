@@ -1,9 +1,8 @@
-import { Outlet, Link, useNavigate } from 'react-router-dom';
+import { Outlet, Link,  } from 'react-router-dom';
 import { useAuthContext } from '../context/AuthContext';
 
 export default function SuperAdminLayout() {
   const { logout, user } = useAuthContext();
-  const navigate = useNavigate();
 
   return (
     <div className="superadmin-layout">

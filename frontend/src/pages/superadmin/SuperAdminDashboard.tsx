@@ -1,4 +1,3 @@
-import React from 'react';
 
 export default function SuperAdminDashboard() {
   // Datos simulados para las tarjetas métricas
