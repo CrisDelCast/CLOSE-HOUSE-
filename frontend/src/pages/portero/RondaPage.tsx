@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Html5QrcodeScanner } from 'html5-qrcode';
-import axios from 'axios';
+import axios from '../../api/axios';
 
 interface ControlPoint {
   id: string;
