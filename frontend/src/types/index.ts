@@ -75,5 +75,45 @@ export interface CreateVisitorInput {
 export interface DenyVisitorInput {
   notes?: string;
 }
+// ... (Tus tipos actuales de User, Resident y Visitor se quedan exactamente igual)
 
+export interface RoundConfigInput {
+  timePerPoint: number;
+  timeBetweenPoints: number;
+  vehicleControlSchedule: string;
+  totalRoundPoints: number;
+}
+
+export interface CreateTenantInput {
+  name: string;
+  slug: string;
+  phoneCode: string;
+  totalUnits: number;
+  totalParkingSlots: number;
+  scheduleType: string;
+  adminName: string;
+  adminEmail: string;
+  adminPhone: string;
+  rulesText?: string;
+  roundConfig: RoundConfigInput; // Obligatorio para la inserción en cascada
+}
+
+export type TenantStatus = 'ACTIVE' | 'SUSPENDED';
+
+export interface Tenant {
+  id: string;
+  name: string;
+  slug: string;
+  phoneCode: string;
+  totalUnits: number;
+  totalParkingSlots: number;
+  scheduleType: string;
+  adminName: string;
+  adminEmail: string;
+  adminPhone: string;
+  rulesText?: string;
+  status: TenantStatus;
+  createdAt: string;
+  roundConfig?: RoundConfigInput; // Puede venir mapeado desde el backend en las consultas GET
+}
 

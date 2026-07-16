@@ -1,4 +1,7 @@
 {
   "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": ["node", "multer"] // 👈 Asegúrate de que "multer" esté aquí mapeado
+  },
   "exclude": ["node_modules", "test", "dist", "**/*spec.ts"]
 }

@@ -16,16 +16,25 @@ import PorteroLayout from './layouts/Portero';
 const RootRedirect = () => {
   const { user } = useAuthContext();
 
-  if (user?.role === 'SUPERADMIN') {
+  // Si por latencia de estado el usuario aún no ha cargado, esperamos un instante
+  if (!user) {
+    return null; 
+  }
+
+  if (user.role === 'SUPERADMIN') {
     return <Navigate to="/superadmin" replace />;
   }
   
-  if (user?.role === 'PORTERO') {
+  if (user.role === 'PORTERO') {
     return <Navigate to="/rounds" replace />;
   }
 
-  // Si es ADMIN va a residentes
-  return <Navigate to="/residents" replace />;
+  if (user.role === 'ADMIN') {
+    return <Navigate to="/residents" replace />;
+  }
+
+  // Si no coincide con ninguno, al login
+  return <Navigate to="/login" replace />;
 };
 
 function App() {
@@ -67,7 +76,7 @@ function App() {
 
       </Route>
       
-      <Route path="*" element={<Navigate to="/login" replace />} />
+      <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
 }

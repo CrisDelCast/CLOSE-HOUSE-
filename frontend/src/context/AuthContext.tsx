@@ -20,7 +20,7 @@ interface AuthState {
 
 interface AuthContextValue extends AuthState {
   isInitializing: boolean;
-  login: (payload: LoginPayload) => Promise<void>;
+  login: (payload: LoginPayload) => Promise<User>; // 👈 Cambiado de Promise<void> a Promise<User>
   logout: () => void;
 }
 
@@ -55,7 +55,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setIsInitializing(false);
   }, []);
 
-  const login = useCallback(async (payload: LoginPayload) => {
+  // 2. Modifica la función login para que retorne el usuario al final
+  const login = useCallback(async (payload: LoginPayload): Promise<User> => {
     const response = await loginRequest(payload);
     const newState: AuthState = {
       user: response.user,
@@ -66,6 +67,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
     setState(newState);
     window.localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(newState));
+
+    return response.user; // 👈 ¡Retornamos el usuario fresco!
   }, []);
 
   const logout = useCallback(() => {

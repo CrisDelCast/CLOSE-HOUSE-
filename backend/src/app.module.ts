@@ -9,6 +9,8 @@ import { ResidentsModule } from './residents/residents.module';
 import { TenantsModule } from './tenants/tenants.module';
 import { UsersModule } from './users/users.module';
 import { VisitorsModule } from './visitors/visitors.module';
+import { ExamsModule } from './exams/exams.module';
+import { RoundsModule } from './rounds/rounds.module';
 
 @Module({
   imports: [
@@ -19,6 +21,8 @@ import { VisitorsModule } from './visitors/visitors.module';
     UsersModule,
     AuthModule,
     VisitorsModule,
+    ExamsModule,
+    RoundsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
