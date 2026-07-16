@@ -434,7 +434,7 @@ export default function TenantsManagement() {
                             const win = window.open();
                             if (win) {
                               // 1. Definimos la URL del logo de la empresa (Usa la misma ruta/importación que en el Login)
-                              const logoUrl = "/Logo Duxs Security (1).png"; 
+                              const logoUrl = "/logo-duxssecurity.png"; 
 
                               win.document.write(`
                                 <!DOCTYPE html>

@@ -232,7 +232,7 @@ const LoginPage = () => {
             boxSizing: 'border-box'
           }}>
             <img 
-              src="\Logo Duxs Security (1).png" // 👈 REEMPLAZA AQUÍ con la ruta o URL de tu imagen
+              src="/logo-duxssecurity.png" // 👈 REEMPLAZA AQUÍ con la ruta o URL de tu imagen
               alt="Logo Empresa"
               style={{
                 maxWidth: '100%',
