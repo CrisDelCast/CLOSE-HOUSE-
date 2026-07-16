@@ -1,6 +1,6 @@
 import api from './client';
 import type { LoginPayload, LoginResponse } from '../types';
-import axios from 'axios';
+/*import axios from 'axios';*/
 
 export const loginRequest = async (payload: LoginPayload) => {
   const { data } = await api.post<LoginResponse>('/auth/login', payload);
