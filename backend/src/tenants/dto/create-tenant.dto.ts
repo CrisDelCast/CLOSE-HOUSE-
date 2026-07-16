@@ -22,6 +22,10 @@ class RoundConfigDto {
   @IsString()
   @IsNotEmpty()
   readonly vehicleControlSchedule: string; // Ej: "22:00-06:00"
+
+  @IsNumber()
+  @IsNotEmpty()
+  readonly totalRoundPoints: number;
 }
 
 export class CreateTenantDto {

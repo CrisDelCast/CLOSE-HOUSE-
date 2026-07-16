@@ -238,15 +238,34 @@ export default function TenantsManagement() {
           color: #ffffff;
           border-color: #D4AF37;
         }
+        @media (max-width: 768px) {
+          .responsive-title {
+            font-size: 28px !important; /* Baja de 50px a 28px */
+          }
+          .responsive-subtitle {
+            font-size: 16px !important; /* Baja de 30px a 16px */
+          }
+          .responsive-table th {
+            font-size: 14px !important; /* Encabezados más sutiles */
+            padding: 10px !important;
+          }
+          .responsive-table td {
+            font-size: 13px !important; /* Texto de celdas más compacto */
+            padding: 10px !important;
+          }
+          .responsive-badge {
+            font-size: 12px !important; /* Ajusta los textos dentro de los badges dorados */
+          }
+        }  
       `}</style>
 
       {/* Encabezado */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '28px' }}>
         <div>
-          <h2 style={{ fontSize: '50px', fontWeight: '700', color: '#ffffff', margin: 0, letterSpacing: '0.5px' }}>
+          <h2 className="responsive-title" style={{ fontSize: '50px', fontWeight: '700', color: '#ffffff', margin: 0, letterSpacing: '0.5px' }}>
             Gestión de Conjuntos Residenciales
           </h2>
-          <p style={{ margin: '4px 0 0 0', color: '#a3a3a3', fontSize: '30px' }}>Supervisión, infraestructura y configuración de rondas</p>
+          <p className="responsive-subtitle" style={{ margin: '4px 0 0 0', color: '#a3a3a3', fontSize: '30px' }}>Supervisión, infraestructura y configuración de rondas</p>
         </div>
         {user?.role === 'SUPERADMIN' && (
           <button onClick={() => setIsModalOpen(true)} className="btn-gold">
@@ -261,16 +280,8 @@ export default function TenantsManagement() {
 
       {/* Tabla de Tenants */}
       {!isLoading && tenants && (
-        <div style={{ 
-          background: 'rgba(26, 25, 25, 0.95)', 
-          borderRadius: '16px', 
-          border: '1px solid rgba(212, 175, 55, 0.15)', 
-          overflow: 'hidden', 
-          marginBottom: '30px', 
-          boxShadow: '0 10px 30px rgba(0, 0, 0, 0.5)',
-          backdropFilter: 'blur(8px)'
-        }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+        <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+            <table className="responsive-table" style={{ width: '100%', minWidth: '1000px', borderCollapse: 'collapse', textAlign: 'left' }}>
             <thead>
               <tr style={{ background: 'rgba(136, 126, 38, 0.8)', color: '#ffffff', fontWeight: '900', borderBottom: '1px solid #2e2e33', fontSize: '30px', letterSpacing: '1px', textTransform: 'uppercase' }}>
                 <th style={{ padding: '16px' ,color: '#ffffff',fontSize: '18px'}}>Nombre del Conjunto</th>
@@ -292,14 +303,14 @@ export default function TenantsManagement() {
                 safeTenants.map((tenant: Tenant) => (
                   <tr key={tenant.id} style={{ borderBottom: '1px solid #1c1c1f', color: '#ffffff' }}>
                     {/* Nombre en Cuadrito Dorado del Login */}
-                    <td style={{ padding: '20x' }}>
-                      <span style={goldenBadgeStyle}>
+                    <td style={{ padding: '20px' }}>
+                      <span className="responsive-badge" style={goldenBadgeStyle}>
                         {tenant.name}
                       </span>
                     </td>
                     {/* Slug con badge */}
                     <td style={{ padding: '16px' }}>
-                      <span style={{ ...goldenBadgeStyle, fontSize: '20px', padding: '4px 8px', background: 'rgba(212, 175, 55, 0.05)' }}>
+                      <span className="responsive-badge" style={{ ...goldenBadgeStyle, fontSize: '20px', padding: '4px 8px', background: 'rgba(212, 175, 55, 0.05)' }}>
                         /{tenant.slug}
                       </span>
                     </td>
