@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthContext } from '../../context/AuthContext';
 import { createTenant, fetchTenants } from '../../api/tenants';
 import type { CreateTenantInput, Tenant } from '../../types';
+import api from '../../api/client';
 import axios from 'axios';
 
 // Interfaces locales para los Puntos de Control
@@ -57,7 +58,7 @@ export default function TenantsManagement() {
     queryFn: async () => {
       if (!selectedTenantForPoints?.id) return [];
       try {
-        const { data } = await axios.get(`/api/control-points/tenant/${selectedTenantForPoints.id}`);
+        const { data } = await api.get(`/control-points/tenant/${selectedTenantForPoints.id}`);
         return Array.isArray(data) ? data : [];
       } catch (error) {
         console.error("Error al obtener los puntos de control:", error);
@@ -93,7 +94,7 @@ export default function TenantsManagement() {
   // Mutación para agregar punto
   const addPointMutation = useMutation({
     mutationFn: async (payload: { name: string; sequenceOrder: number; tenantId: string }) => {
-      const { data } = await axios.post('/api/control-points', payload);
+      const { data } = await api.post('/control-points', payload);
       return data;
     },
     onSuccess: () => {
