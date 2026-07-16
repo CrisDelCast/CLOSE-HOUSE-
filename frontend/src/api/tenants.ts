@@ -1,14 +1,18 @@
-import axios from 'axios'; // O la instancia de axios configurada que uses globalmente
+// 1. Importa 'api' (tu cliente personalizado) en lugar de 'axios' directo
+import api from './client'; 
 import type { CreateTenantInput, Tenant } from '../types';
 
-const API_URL = 'http://localhost:3000/api/tenants';
+// 2. Deja solo la ruta relativa, ya que 'client' se encarga de ponerle el dominio correcto (localhost o Railway)
+const API_URL = '/tenants';
 
 export const fetchTenants = async (): Promise<Tenant[]> => {
-  const { data } = await axios.get<Tenant[]>(API_URL);
+  // 3. Usa 'api' en lugar de 'axios'
+  const { data } = await api.get<Tenant[]>(API_URL);
   return data;
 };
 
 export const createTenant = async (tenantData: CreateTenantInput): Promise<Tenant> => {
-  const { data } = await axios.post<Tenant>(API_URL, tenantData);
+  // 3. Usa 'api' en lugar de 'axios'
+  const { data } = await api.post<Tenant>(API_URL, tenantData);
   return data;
 };
