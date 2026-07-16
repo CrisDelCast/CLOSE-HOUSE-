@@ -41,7 +41,7 @@ export class ResidentsController {
     return this.residentsService.findAll(tenantId);
   }
 
-  // 3. ✨ NUEVO ENDPOINT: Carga masiva mediante archivo Excel
+  /*// 3. ✨ NUEVO ENDPOINT: Carga masiva mediante archivo Excel
   // Reutiliza tu @TenantId() para saber a qué conjunto meter los residentes del Excel de forma ultra segura
   @Post('bulk-upload')
   @Roles('ADMIN', 'SUPERADMIN') // Permitimos que tanto el Admin local como el SuperAdmin global ejecuten la carga
@@ -62,5 +62,5 @@ export class ResidentsController {
     }
 
     return this.residentsService.processBulkUpload(tenantId, file);
-  }
+  }*/
 }
