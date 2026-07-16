@@ -6,7 +6,7 @@ import { createTenant, fetchTenants } from '../../api/tenants';
 import type { CreateTenantInput, Tenant } from '../../types';
 import api from '../../api/client';
 import axios from 'axios';
-import logoDuxs from '../assets/logo-duxssecurity.png';
+import logoDuxs from '../../assets/logo-duxssecurity.png';
 
 // Interfaces locales para los Puntos de Control
 interface ControlPoint {
