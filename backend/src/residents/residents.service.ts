@@ -4,7 +4,7 @@ import { Repository } from 'typeorm';
 import { TenantsService } from '../tenants/tenants.service';
 import { CreateResidentDto } from './dto/create-resident.dto';
 import { Resident } from './entities/resident.entity';
-import * as ExcelJS from 'exceljs';
+
 
 @Injectable()
 export class ResidentsService {
@@ -33,7 +33,7 @@ export class ResidentsService {
     });
   }
 
-  // 3. ✨ NUEVO MÉTODO: Procesamiento de Excel en memoria y Bulk Insert optimizado
+  /* // 3. ✨ NUEVO MÉTODO: Procesamiento de Excel en memoria y Bulk Insert optimizado
   async processBulkUpload(tenantId: string, file: Express.Multer.File) {
     // Validar que el Tenant realmente exista usando tu servicio inyectado
     await this.tenantsService.findById(tenantId);
@@ -91,5 +91,5 @@ export class ResidentsService {
       message: `Carga masiva finalizada con éxito. Se registraron ${residentsToInsert.length} residentes.`,
       recordsCount: residentsToInsert.length,
     };
-  }
+  }*/
 }
