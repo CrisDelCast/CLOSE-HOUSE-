@@ -6,6 +6,7 @@ import { createTenant, fetchTenants } from '../../api/tenants';
 import type { CreateTenantInput, Tenant } from '../../types';
 import api from '../../api/client';
 import axios from 'axios';
+import logoDuxs from '../assets/logo-duxssecurity.png';
 
 // Interfaces locales para los Puntos de Control
 interface ControlPoint {
@@ -434,7 +435,7 @@ export default function TenantsManagement() {
                             const win = window.open();
                             if (win) {
                               // 1. Definimos la URL del logo de la empresa (Usa la misma ruta/importación que en el Login)
-                              const logoUrl = "/logo-duxssecurity.png"; 
+                              const logoUrl = logoDuxs; 
 
                               win.document.write(`
                                 <!DOCTYPE html>

@@ -3,6 +3,7 @@ import type { ChangeEvent, FormEvent } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import type { Location } from 'react-router-dom';
 import { useAuthContext } from '../context/AuthContext';
+import logoDuxs from '../assets/logo-duxssecurity.png'; // Ajusta la ruta según tu carpeta
 
 const LoginPage = () => {
   const { login, user, isInitializing } = useAuthContext() as any; 
@@ -232,7 +233,7 @@ const LoginPage = () => {
             boxSizing: 'border-box'
           }}>
             <img 
-              src="/logo-duxssecurity.png" // 👈 REEMPLAZA AQUÍ con la ruta o URL de tu imagen
+              src={logoDuxs}// 👈 REEMPLAZA AQUÍ con la ruta o URL de tu imagen
               alt="Logo Empresa"
               style={{
                 maxWidth: '100%',
