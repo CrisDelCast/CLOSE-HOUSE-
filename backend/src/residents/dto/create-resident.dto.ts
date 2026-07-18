@@ -3,6 +3,7 @@ import {
   IsNotEmpty,
   IsOptional,
   IsString,
+  IsUUID,
   MaxLength,
 } from 'class-validator';
 
@@ -22,18 +23,13 @@ export class CreateResidentDto {
   @MaxLength(120)
   readonly email: string;
 
-  @IsString()
-  @IsNotEmpty()
-  @MaxLength(20)
-  readonly unitNumber: string;
-
   @IsOptional()
   @IsString()
   @MaxLength(20)
   readonly phone?: string;
 
-  @IsOptional()
-  @IsString()
-  @MaxLength(10)
-  readonly vehiclePlate?: string;
+  // 👈 Ahora es obligatorio y es la única vía para asociarlo a su inmueble
+  @IsNotEmpty()
+  @IsUUID()
+  readonly apartmentId: string; 
 }

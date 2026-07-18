@@ -7,7 +7,7 @@ export class GuardRoundCheck {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @CreateDateColumn({ name: 'scanned_at', type: 'timestamp' })
+  @CreateDateColumn({ name: 'scanned_at', type: 'timestamptz' })
   scannedAt: Date;
 
   @Column({ name: 'is_valid', type: 'boolean', default: true })

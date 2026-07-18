@@ -2,7 +2,7 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 import ProtectedRoute from './components/ProtectedRoute';
 import AppLayout from './layouts/AppLayout';
 import LoginPage from './pages/LoginPage';
-import ResidentsPage from './pages/ResidentsPage';
+import ResidentsPage from './pages/superadmin/ResidentsPage';
 import VisitorsPage from './pages/VisitorsPage';
 import SuperAdminLayout from './layouts/SuperAdminLayout';
 import SuperAdminDashboard from './pages/superadmin/SuperAdminDashboard';
@@ -63,6 +63,8 @@ function App() {
             <Route path="dashboard" element={<SuperAdminDashboard />} />
             <Route path="tenants" element={<TenantsManagement />} />
             <Route path="settings" element={<GlobalSettings />} />
+            <Route path="residents" element={<ResidentsPage />} />
+            <Route path="visitors" element={<VisitorsPage />} />
           </Route>
         </Route>
     

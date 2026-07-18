@@ -31,7 +31,6 @@ export default function RondaDashboard() {
     try {
       setIsLoading(true);
       const { data } = await axios.get('/api/rounds/active');
-      // Si la API retorna null u objeto vacío (sin ID), asumimos que no hay activa
       if (data && data.id) {
         setActiveRound(data);
       } else {
@@ -73,7 +72,11 @@ export default function RondaDashboard() {
         { 
           fps: 10, 
           qrbox: { width: 250, height: 250 },
-          rememberLastUsedCamera: true
+          rememberLastUsedCamera: true,
+          // 💡 CONFIGURACIÓN CLAVE: Obliga al navegador a usar el lente trasero directamente
+          videoConstraints: {
+            facingMode: "environment"
+          }
         },
         /* verbose= */ false
       );
@@ -81,14 +84,12 @@ export default function RondaDashboard() {
       const onScanSuccess = async (decodedText: string) => {
         setStatusMessage({ type: 'info', text: 'Procesando lectura...' });
         
-        // Pausamos el lector para evitar ráfagas de lectura
         if (scanner) {
           scanner.clear().catch(err => console.error("Error al pausar:", err));
         }
         setIsScanning(false);
 
         try {
-          // Enviamos el token al endpoint de tu backend
           const { data } = await axios.post('/api/rounds/scan', {
             qrCodeToken: decodedText
           });
@@ -98,11 +99,9 @@ export default function RondaDashboard() {
             text: `✅ ${data.message}`
           });
 
-          // Si la ronda finalizó (último punto escaneado)
           if (data.roundCompleted) {
             setActiveRound(null);
           } else {
-            // Si no ha terminado, recargamos el estado de la ronda para mostrar el nuevo check marcado
             await checkActiveRound();
           }
 

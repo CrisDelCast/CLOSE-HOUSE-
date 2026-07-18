@@ -114,7 +114,7 @@ export class VisitorsService {
   private async findOneOrFail(id: string, tenantId: string) {
     const visitor = await this.visitorRepository.findOne({
       where: { id, tenantId },
-      relations: { resident: true },
+      relations: { resident: { apartment: true } }, // Cargamos la relación en cascada si es necesario en las consultas particulares
     });
 
     if (!visitor) {
@@ -134,6 +134,7 @@ export class VisitorsService {
 
     const resident = await this.residentRepository.findOne({
       where: { id: residentId, tenantId },
+      relations: { apartment: true }, // 👈 Cargamos el apartamento mapeado relacionalmente
     });
 
     if (!resident) {
@@ -147,10 +148,15 @@ export class VisitorsService {
     resident: Resident | null,
     visitor: Visitor,
   ): Promise<void> {
+    // 🏠 Formateamos la unidad usando la información relacional real
+    const unitIdentifier = resident?.apartment 
+      ? `${resident.apartment.block} - ${resident.apartment.number}`
+      : 'No asignada';
+
     await this.notificationsService.notifyVisitArrival({
       to: resident?.phone,
       residentName: resident?.fullName,
-      unit: resident?.unitNumber,
+      unit: unitIdentifier, // 👈 Pasamos el string dinámico construido en vez de la columna borrada
       visitorName: visitor.fullName,
       purpose: visitor.purpose,
       documentId: visitor.documentId,

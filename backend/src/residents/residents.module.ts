@@ -5,9 +5,10 @@ import { TenantsModule } from '../tenants/tenants.module';
 import { Resident } from './entities/resident.entity';
 import { ResidentsController } from './residents.controller';
 import { ResidentsService } from './residents.service';
+import { Apartment } from '../properties/entities/apartment.entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Resident, Tenant]), TenantsModule],
+  imports: [TypeOrmModule.forFeature([Resident, Tenant,Apartment]), TenantsModule],
   controllers: [ResidentsController],
   providers: [ResidentsService],
 })

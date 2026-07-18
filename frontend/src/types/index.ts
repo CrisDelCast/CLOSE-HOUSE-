@@ -19,15 +19,40 @@ export interface LoginResponse {
   user: User;
 }
 
+
+
+export interface Vehicle {
+  id: string;
+  plate: string;
+  brand?: string;
+  model?: string;
+  color?: string;
+}
+
+export interface ParkingSpot {
+  id: string;
+  number: string;
+  vehicles?: Vehicle[]; // Un parqueadero puede tener vehículos asignados
+}
+
+export interface Apartment {
+  id: string;
+  number: string;
+  block: string;
+  tenantId: string;
+  residents?: Resident[];   // 👈 Relación en cascada
+  parkingSpots?: ParkingSpot[]; // 👈 Relación en cascada
+}
+
 export interface Resident {
   id: string;
   tenantId: string;
   fullName: string;
   documentId: string;
   email: string;
-  unitNumber: string;
   phone?: string;
-  vehiclePlate?: string;
+  apartmentId: string;  // 👈 Llave foránea física hacia el apartamento
+  apartment?: Apartment; // 👈 Objeto anidado que viene del JOIN en el Backend
   createdAt: string;
 }
 
@@ -35,9 +60,8 @@ export interface CreateResidentInput {
   fullName: string;
   documentId: string;
   email: string;
-  unitNumber: string;
   phone?: string;
-  vehiclePlate?: string;
+  apartmentId: string;  // 👈 Ahora el frontend envía obligatoriamente el UUID seleccionado
 }
 
 export type VisitorStatus = 'PENDING' | 'IN' | 'OUT' | 'DENIED';
@@ -75,7 +99,6 @@ export interface CreateVisitorInput {
 export interface DenyVisitorInput {
   notes?: string;
 }
-// ... (Tus tipos actuales de User, Resident y Visitor se quedan exactamente igual)
 
 export interface RoundConfigInput {
   timePerPoint: number;
@@ -95,7 +118,7 @@ export interface CreateTenantInput {
   adminEmail: string;
   adminPhone: string;
   rulesText?: string;
-  roundConfig: RoundConfigInput; // Obligatorio para la inserción en cascada
+  roundConfig: RoundConfigInput; 
 }
 
 export type TenantStatus = 'ACTIVE' | 'SUSPENDED';
@@ -114,6 +137,5 @@ export interface Tenant {
   rulesText?: string;
   status: TenantStatus;
   createdAt: string;
-  roundConfig?: RoundConfigInput; // Puede venir mapeado desde el backend en las consultas GET
+  roundConfig?: RoundConfigInput; 
 }
-

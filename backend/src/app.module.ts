@@ -11,6 +11,7 @@ import { UsersModule } from './users/users.module';
 import { VisitorsModule } from './visitors/visitors.module';
 import { ExamsModule } from './exams/exams.module';
 import { RoundsModule } from './rounds/rounds.module';
+import { PropertiesModule } from './properties/properties.module';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { RoundsModule } from './rounds/rounds.module';
     VisitorsModule,
     ExamsModule,
     RoundsModule,
+    PropertiesModule,
   ],
   controllers: [AppController],
   providers: [AppService],

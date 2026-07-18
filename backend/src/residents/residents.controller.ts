@@ -7,7 +7,8 @@ import {
   UseGuards, 
   UseInterceptors, 
   UploadedFile, 
-  BadRequestException 
+  BadRequestException,
+  Query // 👈 Importamos Query para que el SuperAdmin pueda filtrar por conjunto
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -18,49 +19,40 @@ import { ResidentsService } from './residents.service';
 import { RolesGuard } from '../auth/guards/roles.guard'; 
 import { Roles } from '../auth/decorators/roles.decorator';
 
-
-
 @UseGuards(JwtAuthGuard, TenantGuard, RolesGuard)
 @Controller('residents')
 export class ResidentsController {
   constructor(private readonly residentsService: ResidentsService) {}
 
-  // 1. Crear residente de forma individual (Formulario web manual)
+  // 1. Crear residente de forma individual
   @Post()
-  @Roles('ADMIN')
+  @Roles('ADMIN', 'SUPERADMIN')
   create(
     @TenantId() tenantId: string,
     @Body() createResidentDto: CreateResidentDto,
   ) {
+    // Nota: Si es SUPERADMIN, asegúrate en el frontend de enviarle el tenantId del conjunto seleccionado,
+    // o maneja en el servicio que si el tenantId del decorador es null, lo tome del DTO.
     return this.residentsService.create(tenantId, createResidentDto);
   }
 
-  // 2. Obtener todos los residentes del conjunto actual
-  @Get()
-  findAll(@TenantId() tenantId: string) {
-    return this.residentsService.findAll(tenantId);
-  }
+  // 2. Obtener todos los residentes (¡Corregido!)
+ // 2. Obtener todos los residentes
+ @Get()
+ @Roles('ADMIN', 'SUPERADMIN')
+ findAll(
+   @Query('tenantId') queryTenantId?: string, // 👈 Pasamos el query al primer lugar
+   @TenantId() tenantId?: string // 👈 Lo hacemos opcional con el "?"
+ ) {
+   // 💡 IMPORTANTE: Evaluamos PRIMERO el queryTenantId. 
+   // Si viene (como en el caso del SuperAdmin), lo usamos directamente.
+   // Si no viene, usamos el tenantId inyectado automáticamente para los ADMIN normales.
+   const activeTenantId = queryTenantId || tenantId;
 
-  /*// 3. ✨ NUEVO ENDPOINT: Carga masiva mediante archivo Excel
-  // Reutiliza tu @TenantId() para saber a qué conjunto meter los residentes del Excel de forma ultra segura
-  @Post('bulk-upload')
-  @Roles('ADMIN', 'SUPERADMIN') // Permitimos que tanto el Admin local como el SuperAdmin global ejecuten la carga
-  @UseInterceptors(FileInterceptor('file'))
-  async uploadBulk(
-    @TenantId() tenantId: string,
-    @UploadedFile() file: Express.Multer.File,
-  ) {
-    if (!file) {
-      throw new BadRequestException('Por favor, selecciona un archivo Excel.');
-    }
-    
-    // Validación de extensiones permitidas
-    if (!file.originalname.match(/\.(xlsx|xls|csv)$/)) {
-      throw new BadRequestException(
-        'Formato de archivo no válido. Debe ser un archivo Excel (.xlsx, .xls) o un CSV.'
-      );
-    }
+   if (!activeTenantId) {
+     throw new BadRequestException('Se requiere especificar un conjunto (Tenant ID).');
+   }
 
-    return this.residentsService.processBulkUpload(tenantId, file);
-  }*/
+   return this.residentsService.findAll(activeTenantId);
+ }
 }

@@ -86,7 +86,6 @@ export class RoundsService {
 
     // Validación 1: Verificar el orden secuencial del punto escaneado
     if (targetPoint.sequenceOrder !== nextExpectedOrder) {
-      // Buscar cómo se llama el punto que realmente debería escanear para darle feedback al guardia
       const expectedPoint = await this.pointRepo.findOne({
         where: { tenantId: tenantId, sequenceOrder: nextExpectedOrder }
       });
@@ -97,32 +96,22 @@ export class RoundsService {
       );
     }
 
+    // Validación 2: Control de tiempos entre puntos (Inmune a desfaces de servidor)
     if (checksDone.length > 0) {
       const lastCheck = checksDone[checksDone.length - 1];
       
-      // 1. Obtener los milisegundos absolutos de ambos momentos
-      const nowMs = Date.now(); // Milisegundos UTC exactos en Node.js
-      const lastScannedMs = new Date(lastCheck.scannedAt).getTime(); // Milisegundos UTC del registro en BD
+      // Al ser TIMESTAMPTZ, ambos instantes devuelven milisegundos en base a la línea temporal UTC común
+      const nowMs = Date.now(); 
+      const lastScannedMs = lastCheck.scannedAt.getTime(); 
 
-      // 2. Calcular la diferencia inicial de tiempo
-      let diffMs = nowMs - lastScannedMs;
+      // La resta matemática es directa y exacta
+      const diffMs = nowMs - lastScannedMs;
+      const actualDiff = diffMs / 60000; // Convertir a minutos netos
 
-      // 3. Ajuste adaptativo de Zona Horaria (Local vs Producción)
-      // Si la diferencia es menor a -1 minuto, significa que la base de datos guardó
-      // el registro con el desfase de 5 horas de Colombia (UTC-5) y el servidor lee en UTC.
-      const fiveHoursInMs = 5 * 60 * 60 * 1000;
-      if (diffMs < -60000) {
-        diffMs = diffMs + fiveHoursInMs;
-      }
-
-      // 4. Convertir la diferencia neta a minutos reales transcurridos
-      const diffMinutes = diffMs / 60000;
-      const actualDiff = diffMinutes < 0 ? 0 : diffMinutes;
-
-      console.log(`[Rondas] Comparando tiempos de patrullaje:`);
+      console.log(`[Rondas] Comparación horaria exacta (TIMESTAMPTZ):`);
       console.log(` - Servidor Node (Ahora): ${new Date(nowMs).toISOString()}`);
       console.log(` - Base de datos (Último escaneo): ${new Date(lastScannedMs).toISOString()}`);
-      console.log(` - Diferencia neta: ${actualDiff.toFixed(2)} minutos`);
+      console.log(` - Tiempo transcurrido real: ${actualDiff.toFixed(2)} minutos`);
 
       if (actualDiff < config.timePerPoint) {
         const remaining = Math.ceil(config.timePerPoint - actualDiff);
@@ -144,7 +133,7 @@ export class RoundsService {
     // 5. ¿Es el último punto configurado? Completar la ronda
     if (targetPoint.sequenceOrder === config.totalRoundPoints) {
       round.status = 'COMPLETED';
-      round.completedAt = new Date();
+      round.completedAt = new Date(); // Genera automáticamente el objeto Date en UTC
       await this.roundRepo.save(round);
       
       return { 

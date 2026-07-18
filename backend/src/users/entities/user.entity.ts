@@ -2,6 +2,7 @@ import {
   Column,
   CreateDateColumn,
   Entity,
+  Index,
   JoinColumn,
   ManyToOne,
   PrimaryGeneratedColumn,
@@ -26,6 +27,7 @@ export class User {
   @Column({ name: 'tenant_id' })
   tenantId: string;
 
+  @Index('IDX_users_tenant_id', ['tenant'])
   @ManyToOne(() => Tenant, (tenant) => tenant.users, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'tenant_id' })
   tenant?: Tenant;

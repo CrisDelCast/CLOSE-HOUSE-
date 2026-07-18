@@ -8,13 +8,14 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 import { Tenant } from '../../tenants/entities/tenant.entity';
+import { Apartment } from '../../properties/entities/apartment.entity';
 
 @Entity({ name: 'residents' })
 export class Resident {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ name: 'tenant_id' })
+  @Column({ name: 'tenant_id', type: 'uuid' }) // Especificamos tipo uuid para mantener consistencia
   tenantId: string;
 
   @ManyToOne(() => Tenant, (tenant) => tenant.residents, {
@@ -32,14 +33,17 @@ export class Resident {
   @Column({ nullable: true })
   email?: string;
 
-  @Column({ name: 'unit_number' })
-  unitNumber: string;
-
   @Column({ nullable: true })
   phone?: string;
 
-  @Column({ name: 'vehicle_plate', nullable: true })
-  vehiclePlate?: string;
+  @Column({ name: 'apartment_id', type: 'uuid', nullable: true })
+  apartmentId: string;
+
+  @ManyToOne(() => Apartment, (apartment) => apartment.residents, { 
+    onDelete: 'SET NULL' 
+  })
+  @JoinColumn({ name: 'apartment_id' })
+  apartment: Apartment;
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;

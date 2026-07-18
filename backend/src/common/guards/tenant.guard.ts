@@ -13,6 +13,16 @@ import { TENANT_HEADER } from '../constants/tenant.constant';
 export class TenantGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
     const request = context.switchToHttp().getRequest<Request>();
+    const payload = request.user as JwtPayload | undefined;
+
+    // --- 🛡️ EXCEPCIÓN PARA EL SUPERADMIN ---
+    // Si es SUPERADMIN, le permitimos consultar cualquier unidad residencial 
+    // sin importar que su token tenga un tenantId diferente al del header.
+    if (payload && payload.role === 'SUPERADMIN') {
+      return true;
+    }
+
+    // --- LÓGICA ESTRICTA PARA LOS DEMÁS (ADMIN, PORTERO, etc.) ---
     const headerValue = request.headers[TENANT_HEADER] as string | string[];
     const tenantId = Array.isArray(headerValue) ? headerValue[0] : headerValue;
 
@@ -22,7 +32,6 @@ export class TenantGuard implements CanActivate {
       );
     }
 
-    const payload = request.user as JwtPayload | undefined;
     if (payload && payload.tenantId !== tenantId) {
       throw new ForbiddenException(
         'El token no corresponde a la unidad residencial especificada.',

@@ -33,14 +33,19 @@ api.interceptors.request.use((config) => {
       const parsed = JSON.parse(stored) as {
         token?: string;
         tenantId?: string;
+        activeTenantId?: string; // 👁️ Agregamos el tipado para el tenant activo
       };
 
       if (parsed?.token) {
         config.headers.Authorization = `Bearer ${parsed.token}`;
       }
 
-      if (parsed?.tenantId) {
-        config.headers['x-tenant-id'] = parsed.tenantId;
+      // 🔄 LA MAGIA: Si existe un activeTenantId (suplantado o base), enviamos ese.
+      // Si por alguna razón no está, recurrimos al tenantId como fallback de seguridad.
+      const tenantToSend = parsed?.activeTenantId || parsed?.tenantId;
+      
+      if (tenantToSend) {
+        config.headers['x-tenant-id'] = tenantToSend;
       }
     } catch {
       // ignore malformed storage
@@ -51,4 +56,3 @@ api.interceptors.request.use((config) => {
 });
 
 export default api;
-

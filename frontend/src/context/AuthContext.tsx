@@ -14,14 +14,16 @@ import type { LoginPayload, User } from '../types';
 interface AuthState {
   user: User | null;
   token: string | null;
-  tenantId: string | null;
+  tenantId: string | null; // El tenant base/original del usuario
   tenantSlug: string | null;
+  activeTenantId: string | null; // 👁️ El tenant del conjunto que se está visualizando activamente
 }
 
 interface AuthContextValue extends AuthState {
   isInitializing: boolean;
-  login: (payload: LoginPayload) => Promise<User>; // 👈 Cambiado de Promise<void> a Promise<User>
+  login: (payload: LoginPayload) => Promise<User>;
   logout: () => void;
+  switchTenant: (tenantId: string) => void; // 🔄 Función para cambiar de conjunto (Superadmin)
 }
 
 const initialState: AuthState = {
@@ -29,6 +31,7 @@ const initialState: AuthState = {
   token: null,
   tenantId: null,
   tenantSlug: null,
+  activeTenantId: null,
 };
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -46,6 +49,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     if (stored) {
       try {
         const parsed = JSON.parse(stored) as AuthState;
+        
+        // Si por alguna razón al recuperar el estado no hay un activeTenantId pero sí un tenantId base, 
+        // lo inicializamos con su propio conjunto.
+        if (parsed.tenantId && !parsed.activeTenantId) {
+          parsed.activeTenantId = parsed.tenantId;
+        }
+        
         setState(parsed);
       } catch {
         window.localStorage.removeItem(AUTH_STORAGE_KEY);
@@ -55,7 +65,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setIsInitializing(false);
   }, []);
 
-  // 2. Modifica la función login para que retorne el usuario al final
   const login = useCallback(async (payload: LoginPayload): Promise<User> => {
     const response = await loginRequest(payload);
     const newState: AuthState = {
@@ -63,12 +72,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       token: response.accessToken,
       tenantId: response.user.tenantId,
       tenantSlug: payload.tenantSlug,
+      activeTenantId: response.user.tenantId, // Al iniciar sesión, el activo es su propio tenant base
     };
 
     setState(newState);
     window.localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(newState));
 
-    return response.user; // 👈 ¡Retornamos el usuario fresco!
+    return response.user;
   }, []);
 
   const logout = useCallback(() => {
@@ -78,14 +88,34 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   }, []);
 
+  // 🔄 Cambia de conjunto guardando el cambio en el estado global y persistencia
+  const switchTenant = useCallback((tenantId: string) => {
+    setState((prev) => {
+      if (!prev.user) return prev; // Seguridad por si no hay sesión activa
+
+      const updatedState: AuthState = {
+        ...prev,
+        activeTenantId: tenantId,
+      };
+
+      // Guardamos en localStorage para persistir el cambio al recargar pantalla
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(updatedState));
+      }
+
+      return updatedState;
+    });
+  }, []);
+
   const value = useMemo(
     () => ({
       ...state,
       isInitializing,
       login,
       logout,
+      switchTenant,
     }),
-    [state, isInitializing, login, logout],
+    [state, isInitializing, login, logout, switchTenant],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
@@ -99,4 +129,3 @@ export const useAuthContext = () => {
 
   return ctx;
 };
-

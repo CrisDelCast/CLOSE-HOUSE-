@@ -1,4 +1,4 @@
-import { Outlet, Link } from 'react-router-dom';
+import { Outlet, NavLink } from 'react-router-dom'; // 1. Cambiamos Link por NavLink
 import { useAuthContext } from '../context/AuthContext';
 
 export default function SuperAdminLayout() {
@@ -53,6 +53,13 @@ export default function SuperAdminLayout() {
           align-items: center;
           gap: 6px;
           border: 1px solid transparent;
+        }
+
+        /* 👑 ESTILO PARA EL LINK ACTIVO (Resaltado dorado automático) */
+        .nav-link.active {
+          background-color: rgba(212, 175, 55, 0.12) !important;
+          border-color: rgba(212, 175, 55, 0.3) !important;
+          color: #D4AF37 !important;
         }
 
         /* Hover (PC): Iluminación con dorado suave y bordes sutiles */
@@ -119,7 +126,7 @@ export default function SuperAdminLayout() {
           <span 
             className="responsive-badge"
             style={{ 
-              background: '#D4AF37', /* Ahora el badge de la barra superior lleva el dorado primario */
+              background: '#D4AF37', 
               color: '#0c0c0e', 
               borderRadius: '4px', 
               fontWeight: 'bold',
@@ -150,9 +157,9 @@ export default function SuperAdminLayout() {
               display: 'flex',
               alignItems: 'center',
               gap: '6px',
-              backgroundColor: 'rgba(212, 175, 55, 0.1)', /* Botón oscuro traslúcido */
+              backgroundColor: 'rgba(212, 175, 55, 0.1)', 
               border: '1px solid rgba(212, 175, 55, 0.3)',
-              color: '#D4AF37', /* Texto en dorado */
+              color: '#D4AF37', 
               borderRadius: '6px',
               fontWeight: 'bold',
               cursor: 'pointer',
@@ -191,7 +198,7 @@ export default function SuperAdminLayout() {
         </div>
       </header>
 
-      {/* PESTAÑAS O MENÚ EXCLUSIVO DEL SUPER ADMIN */}
+      {/* PESTAÑAS O MENÚ DE NAVEGACIÓN */}
       <nav style={{ 
         display: 'flex', 
         gap: '10px', 
@@ -202,22 +209,31 @@ export default function SuperAdminLayout() {
         WebkitOverflowScrolling: 'touch',
         zIndex: 9
       }}>
-        <Link to="/superadmin/dashboard" className="nav-link">
+        {/* Enlaces de Super Admin originales */}
+        <NavLink to="/superadmin/dashboard" className="nav-link">
           <span>📊</span> Dashboard Global
-        </Link>
-        <Link to="/superadmin/tenants" className="nav-link">
+        </NavLink>
+        <NavLink to="/superadmin/tenants" className="nav-link">
           <span>🏢</span> Gestionar Conjuntos (Tenants)
-        </Link>
-        <Link to="/superadmin/settings" className="nav-link">
+        </NavLink>
+        <NavLink to="/superadmin/settings" className="nav-link">
           <span>⚙️</span> Configuración del Sistema
-        </Link>
+        </NavLink>
+
+        {/* 🆕 NUEVOS ENLACES INTEGRADOS CON ESTILO PREMIUM */}
+        <NavLink to="/superadmin/residents" className="nav-link">
+          <span>👥</span> Residentes
+        </NavLink>
+        <NavLink to="/superadmin/visitors" className="nav-link">
+          <span>🚗</span> Visitantes
+        </NavLink>
       </nav>
 
-      {/* AQUÍ SE RENDERIZAN LAS SUBPÁGINAS (Heredan el fondo oscuro) */}
+      {/* AQUÍ SE RENDERIZAN LAS SUBPÁGINAS */}
       <main style={{ 
         flex: 1, 
         padding: '2rem 1rem', 
-        color: '#ffffff', /* Forzamos a que todo el texto de las subpáginas empiece siendo blanco/legible */
+        color: '#ffffff', 
         boxSizing: 'border-box'
       }}>
         <Outlet />

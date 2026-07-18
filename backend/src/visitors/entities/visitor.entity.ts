@@ -2,6 +2,7 @@ import {
   Column,
   CreateDateColumn,
   Entity,
+  Index,
   JoinColumn,
   ManyToOne,
   PrimaryGeneratedColumn,
@@ -26,6 +27,7 @@ export class Visitor {
   @Column({ name: 'tenant_id' })
   tenantId: string;
 
+  @Index('IDX_visitors_tenant_id')
   @ManyToOne(() => Tenant, (tenant) => tenant.visitors, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'tenant_id' })
   tenant?: Tenant;
@@ -79,4 +81,7 @@ export class Visitor {
 
   @UpdateDateColumn({ name: 'updated_at' })
   updatedAt: Date;
+
+
+  
 }

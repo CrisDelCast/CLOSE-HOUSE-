@@ -7,10 +7,10 @@ export class GuardRound {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @CreateDateColumn({ name: 'started_at', type: 'timestamp' })
+  @CreateDateColumn({ name: 'started_at', type: 'timestamptz' })
   startedAt: Date;
 
-  @Column({ name: 'completed_at', type: 'timestamp', nullable: true })
+  @Column({ name: 'completed_at', type: 'timestamptz', nullable: true })
   completedAt: Date | null;
 
   @Column({ type: 'varchar', default: 'IN_PROGRESS' })
