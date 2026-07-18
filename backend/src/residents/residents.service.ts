@@ -5,7 +5,6 @@ import { TenantsService } from '../tenants/tenants.service';
 import { CreateResidentDto } from './dto/create-resident.dto';
 import { Resident } from './entities/resident.entity';
  // Asegúrate de importar la entidad Apartment
-import * as ExcelJS from 'exceljs';
 import { Apartment } from '../properties/entities/apartment.entity';
 
 @Injectable()
