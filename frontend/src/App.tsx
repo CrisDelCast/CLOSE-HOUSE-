@@ -12,6 +12,7 @@ import { useAuthContext } from './context/AuthContext';
 import RondaDashboard from './pages/portero/RondaPage';
 import PuertaDashboard from './pages/portero/PuertaPage';
 import PorteroLayout from './layouts/Portero';
+import RoundsAuditPage from './pages/superadmin/RoundsAuditPage';
 
 const RootRedirect = () => {
   const { user } = useAuthContext();
@@ -65,6 +66,7 @@ function App() {
             <Route path="settings" element={<GlobalSettings />} />
             <Route path="residents" element={<ResidentsPage />} />
             <Route path="visitors" element={<VisitorsPage />} />
+            <Route path="roundsaudits" element={<RoundsAuditPage />} />
           </Route>
         </Route>
     

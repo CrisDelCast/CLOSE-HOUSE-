@@ -19,6 +19,26 @@ export interface LoginResponse {
   user: User;
 }
 
+export interface Round {
+  id: string;
+  tenantId: string;
+  guard?: {
+    fullName: string;
+  };
+  status: 'IN_PROGRESS' | 'COMPLETED' | 'ABANDONED';
+  startedAt: string;
+  completedAt: string | null;
+  // Si tu backend algún día los manda, se usarán; si no, los calculamos abajo
+  completedCheckpointsCount?: number;
+  totalCheckpointsCount?: number;
+  checks?: Array<{
+    id: string;
+    controlPoint?: {
+      id: string;
+    };
+  }>;
+}
+
 
 
 export interface Vehicle {
