@@ -15,20 +15,21 @@ export class TenantGuard implements CanActivate {
     const request = context.switchToHttp().getRequest<Request>();
     const payload = request.user as JwtPayload | undefined;
 
-    // --- 🛡️ EXCEPCIÓN PARA EL SUPERADMIN ---
-    // Si es SUPERADMIN, le permitimos consultar cualquier unidad residencial 
-    // sin importar que su token tenga un tenantId diferente al del header.
     if (payload && payload.role === 'SUPERADMIN') {
       return true;
+      
     }
 
-    // --- LÓGICA ESTRICTA PARA LOS DEMÁS (ADMIN, PORTERO, etc.) ---
+    // Permitir obtener el tenantId ya sea del header o directamente de los parámetros de la ruta (:tenantId)
     const headerValue = request.headers[TENANT_HEADER] as string | string[];
-    const tenantId = Array.isArray(headerValue) ? headerValue[0] : headerValue;
+    const headerTenantId = Array.isArray(headerValue) ? headerValue[0] : headerValue;
+    const routeTenantId = request.params?.tenantId;
+
+    const tenantId = routeTenantId || headerTenantId;
 
     if (!tenantId) {
       throw new BadRequestException(
-        `Debe enviar el identificador de la unidad residencial en la cabecera "${TENANT_HEADER}".`,
+        `Debe enviar el identificador de la unidad residencial.`,
       );
     }
 

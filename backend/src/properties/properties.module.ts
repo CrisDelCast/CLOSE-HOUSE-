@@ -17,4 +17,4 @@ import { Vehicle } from './entities/vehicle.entity';
   providers: [PropertiesService],
   exports: [PropertiesService], // Por si necesitas usarlo en el módulo de rondas o residentes
 })
-export class PropertiesModule {}
+export class PropertiesModule {}    

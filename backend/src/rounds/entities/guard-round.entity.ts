@@ -1,6 +1,7 @@
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, OneToMany, ManyToOne, JoinColumn } from 'typeorm';
 import { Tenant } from '../../tenants/entities/tenant.entity'; // Ajusta la ruta si es necesario
 import { GuardRoundCheck } from './guard-round-check.entity';
+import { User } from '../../users/entities/user.entity';
 
 @Entity({ name: 'guard_rounds' })
 export class GuardRound {
@@ -28,4 +29,8 @@ export class GuardRound {
 
   @OneToMany(() => GuardRoundCheck, (check) => check.round)
   checks: GuardRoundCheck[];
+
+  @ManyToOne(() => User, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'user_id' })
+  user: User;
 }

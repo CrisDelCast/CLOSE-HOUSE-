@@ -9,6 +9,7 @@ import { TenantControlPoint } from './entities/tenant-control-point.entity';
 import { TenantRoundConfig } from '../tenants/entities/tenant-round-config.entity'; // Ajusta la ruta}
 import { ControlPointsService } from './control-points.service';
 import { ControlPointsController } from './control-points.controller';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 
 @Module({
@@ -19,6 +20,7 @@ import { ControlPointsController } from './control-points.controller';
       TenantControlPoint,
       TenantRoundConfig, // Asegúrate de incluir el de la config de tiempos
     ]),
+    NotificationsModule,
   ],
   controllers: [RoundsController,ControlPointsController],
   providers: [RoundsService,ControlPointsService],

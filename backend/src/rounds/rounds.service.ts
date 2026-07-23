@@ -7,6 +7,7 @@ import { ScanQrDto } from './dto/scan-qr.dto';
 import { GuardRound } from './entities/guard-round.entity';
 import { GuardRoundCheck } from './entities/guard-round-check.entity';
 import { TenantControlPoint } from './entities/tenant-control-point.entity';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class RoundsService {
@@ -19,37 +20,82 @@ export class RoundsService {
     private readonly pointRepo: Repository<TenantControlPoint>,
     @InjectRepository(TenantRoundConfig)
     private readonly configRepo: Repository<TenantRoundConfig>,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   /**
    * 1. Obtener ronda activa del portero
    */
   async getActiveRound(userId: string, tenantId: string) {
-    return this.roundRepo.findOne({
-      where: { 
-        tenantId: tenantId, 
-        userId: userId, 
-        status: 'IN_PROGRESS' 
-      },
-      relations: ['checks', 'checks.controlPoint'],
+    if (!tenantId) return null;
+
+    const round = await this.roundRepo.findOne({
+      where: { tenantId: tenantId, userId: userId, status: 'IN_PROGRESS' },
+      relations: ['checks', 'checks.controlPoint', 'user'],
     });
+  
+    if (!round) return null;
+  
+    // 🔍 AQUÍ ESTÁ LA CLAVE: Cada vez que se consulta la ronda activa, validamos si ya expiró
+    const isExpired = await this.checkAndExpireRound(round, tenantId);
+    if (isExpired) {
+      return null; // Si expiró, la cerramos en BD y devolvemos null para que la vista pase a "Fuera de Ronda"
+    }
+  
+    const config = await this.configRepo.findOne({ where: { tenantId: tenantId } });
+
+    return {
+      ...round,
+      timeBetweenPoints: config ? config.timeBetweenPoints : 10,
+    };
   }
 
   /**
    * 2. Iniciar nueva ronda de vigilancia
    */
-  async startRound(userId: string, tenantId: string) {
-    const active = await this.getActiveRound(userId, tenantId);
-    if (active) {
-      throw new BadRequestException('Ya tienes una ronda en progreso.');
+  async startRound(userId: string, tenantId: string, notes?: string) {
+    // 🔒 Blindaje estricto: Búsqueda acotada al tenant y usuario actual
+    const existingRound = await this.roundRepo.findOne({
+      where: { tenantId, userId, status: 'IN_PROGRESS' },
+      relations: ['user'],
+    });
+
+    if (existingRound) {
+      existingRound.status = 'ABANDONED';
+      existingRound.completedAt = new Date();
+      // Si quieres guardar las notas del reporte en la ronda abandonada antes de cerrarla:
+      // existingRound.notes = notes; 
+      await this.roundRepo.save(existingRound);
+
+      // Notificar por correo
+      try {
+        if (existingRound.user && existingRound.user.email) {
+          await this.notificationsService.notifyRoundAbandoned(
+            existingRound.user.email,
+            existingRound.id,
+            notes // Pasamos el reporte ingresado por el guardia si tu servicio lo recibe
+          );
+        }
+      } catch (error) {
+        console.error('Error al enviar correo de ronda abandonada:', error);
+      }
     }
 
+    // 2. Creamos la nueva ronda limpia asociada estrictamente al tenant correcto
     const round = this.roundRepo.create({
       tenantId: tenantId,
       userId: userId,
       status: 'IN_PROGRESS',
     });
-    return this.roundRepo.save(round);
+    const savedRound = await this.roundRepo.save(round);
+
+    // Consultamos la configuración asegurando el match exacto del tenant
+    const config = await this.configRepo.findOne({ where: { tenantId } });
+
+    return {
+      ...savedRound,
+      timeBetweenPoints: config ? config.timeBetweenPoints : 10,
+    };
   }
 
   /**
@@ -58,7 +104,7 @@ export class RoundsService {
   async scanPoint(userId: string, tenantId: string, scanDto: ScanQrDto) {
     const round = await this.getActiveRound(userId, tenantId);
     if (!round) {
-      throw new BadRequestException('No tienes ninguna ronda activa en curso.');
+      throw new BadRequestException('No tienes ninguna ronda activa en curso o tu ronda ha expirado.');
     }
 
     // Buscar el punto físico al que pertenece el QR escaneado
@@ -100,11 +146,9 @@ export class RoundsService {
     if (checksDone.length > 0) {
       const lastCheck = checksDone[checksDone.length - 1];
       
-      // Al ser TIMESTAMPTZ, ambos instantes devuelven milisegundos en base a la línea temporal UTC común
       const nowMs = Date.now(); 
       const lastScannedMs = lastCheck.scannedAt.getTime(); 
 
-      // La resta matemática es directa y exacta
       const diffMs = nowMs - lastScannedMs;
       const actualDiff = diffMs / 60000; // Convertir a minutos netos
 
@@ -133,7 +177,7 @@ export class RoundsService {
     // 5. ¿Es el último punto configurado? Completar la ronda
     if (targetPoint.sequenceOrder === config.totalRoundPoints) {
       round.status = 'COMPLETED';
-      round.completedAt = new Date(); // Genera automáticamente el objeto Date en UTC
+      round.completedAt = new Date();
       await this.roundRepo.save(round);
       
       return { 
@@ -148,5 +192,127 @@ export class RoundsService {
       check, 
       roundCompleted: false 
     };
+  }
+
+  async findCompletedByTenant(tenantId: string, filters?: { startDate?: string; endDate?: string }) {
+    console.log('Buscando todas las rondas para auditoría - Tenant:', tenantId, 'Filtros:', filters);
+    
+    const query = this.roundRepo.createQueryBuilder('round')
+      .leftJoinAndSelect('round.checks', 'checks')
+      .leftJoinAndSelect('checks.controlPoint', 'controlPoint')
+      .leftJoin('round.user', 'user')
+      .addSelect(['user.id', 'user.fullName', 'user.email'])
+      .where('round.tenantId = :tenantId', { tenantId });
+
+    if (filters?.startDate && filters.startDate.trim() !== '') {
+      const start = new Date(`${filters.startDate}T00:00:00.000Z`);
+      query.andWhere('round.startedAt >= :startDate', { startDate: start });
+    }
+    
+    if (filters?.endDate && filters.endDate.trim() !== '') {
+      const end = new Date(`${filters.endDate}T23:59:59.999Z`);
+      query.andWhere('round.startedAt <= :endDate', { endDate: end });
+    }
+
+    query.orderBy('round.startedAt', 'DESC');
+
+    const rounds = await query.getMany();
+
+    if (!rounds || rounds.length === 0) {
+      return [];
+    }
+
+    return rounds.map((round) => {
+      const completedCheckpointsCount = round.checks ? round.checks.length : 0;
+      const totalCheckpointsCount = round.checks && round.checks.length > 0 
+        ? Math.max(...round.checks.map(c => c.controlPoint?.sequenceOrder || 0), completedCheckpointsCount)
+        : 0;
+
+      return {
+        id: round.id,
+        tenantId: round.tenantId,
+        guard: { fullName: round.user?.fullName || 'Sin asignar' },
+        completedCheckpointsCount,
+        totalCheckpointsCount,
+        status: round.status,
+        startedAt: round.startedAt,
+        completedAt: round.completedAt,
+      };
+    });
+  }
+
+  /**
+   * 4. Forzar la expiración de la ronda activa y enviar notificación
+   */
+  async forceExpireActiveRound(userId: string, tenantId: string) {
+    const round = await this.roundRepo.findOne({
+      where: { tenantId, userId, status: 'IN_PROGRESS' },
+      relations: ['user'],
+    });
+
+    if (!round) {
+      return { message: 'No hay ronda activa para expirar.' };
+    }
+
+    round.status = 'ABANDONED';
+    round.completedAt = new Date();
+    await this.roundRepo.save(round);
+
+    try {
+      if (round.user && round.user.email) {
+        await this.notificationsService.notifyRoundAbandoned(
+          round.user.email,
+          round.id
+        );
+      }
+    } catch (error) {
+      console.error('Error al enviar correo de ronda abandonada:', error);
+    }
+
+    return { message: 'Ronda marcada como abandonada correctamente.' };
+  }
+
+  private async checkAndExpireRound(round: GuardRound, tenantId: string): Promise<boolean> {
+    if (round.status !== 'IN_PROGRESS') return false;
+  
+    // 🔒 Blindaje: Si no hay tenantId, rechazamos inmediatamente para evitar cruces
+    if (!tenantId) {
+      console.error('[Security] Intento de validar expiración sin tenantId');
+      return false;
+    }
+
+    const config = await this.configRepo.findOne({ 
+      where: { tenantId: tenantId } // Forzamos la llave exacta
+    });
+
+    if (!config || !config.timeBetweenPoints) {
+      console.warn(`[Rondas] No se encontró configuración de tiempo para el tenant: ${tenantId}`);
+      return false;
+    }
+  
+    const nowMs = Date.now();
+    const startedAtMs = round.startedAt.getTime();
+    const diffMinutes = (nowMs - startedAtMs) / 60000;
+  
+    if (diffMinutes > config.timeBetweenPoints) {
+      round.status = 'ABANDONED';
+      round.completedAt = new Date();
+      await this.roundRepo.save(round);
+  
+      try {
+        if (round.user && round.user.email) {
+          await this.notificationsService.notifyRoundAbandoned(
+            round.user.email, 
+            round.id
+          );
+        }
+      } catch (error) {
+        console.error('Error al enviar correo de ronda abandonada:', error);
+      }
+  
+      return true;
+    }
+  
+    return false;
   }
 }

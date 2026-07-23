@@ -58,6 +58,24 @@ export class NotificationsService {
     }
   }
 
+  async notifyRoundAbandoned(email: string, roundId: string, notes?: string) {
+    if (!email) {
+      this.logger.warn('No se envió alerta de ronda abandonada: falta el correo del usuario.');
+      return;
+    }
+
+    // 🛡️ Validamos que 'notes' tenga un valor de tipo texto antes de usar .trim()
+    const notesSection = notes && notes.trim() 
+      ? `\n\nReporte del guardia:\n"${notes}"` 
+      : '\n\nNo se ingresó ningún reporte u observación por parte del guardia.';
+
+    await this.sendEmail({
+      to: email,
+      subject: '⚠️ Alerta: Ronda de seguridad abandonada o expirada',
+      text: `Hola, te informamos que la ronda de seguridad con ID ${roundId} ha superado el tiempo límite permitido sin completarse y ha sido marcada como abandonada en el sistema.${notesSection}`,
+    });
+  } 
+
   async notifyVisitArrival(payload: VisitNotificationPayload) {
     const to = payload.to ?? this.defaultToWhatsApp;
     if (!to) {
