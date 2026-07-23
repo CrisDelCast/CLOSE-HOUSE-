@@ -1,3 +1,4 @@
+// 📄 src/rounds/control-points.service.ts
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -26,9 +27,11 @@ export class ControlPointsService {
   }
 
   /**
-   * 2. Crear un nuevo punto validando límites y generando un token único
+   * 2. Crear un nuevo punto validando límites, secuencias y permitiendo el punto MASTER
    */
   async createPoint(name: string, sequenceOrder: number, tenantId: string) {
+    const isMaster = name.toUpperCase().includes('MASTER');
+
     // A. Obtener la configuración del Tenant
     const config = await this.configRepo.findOne({
       where: { tenantId },
@@ -45,33 +48,37 @@ export class ControlPointsService {
       where: { tenantId },
     });
 
-    // C. Validar que no supere el límite configurado (totalRoundPoints)
-    if (currentPointsCount >= config.totalRoundPoints) {
-      throw new BadRequestException(
-        `No es posible crear el punto. El conjunto tiene un límite máximo de ${config.totalRoundPoints} puntos de control en su configuración.`
-      );
-    }
+    // C. Validaciones específicas si NO es un punto Master
+    if (!isMaster) {
+      if (currentPointsCount >= config.totalRoundPoints) {
+        throw new BadRequestException(
+          `No es posible crear el punto. El conjunto tiene un límite máximo de ${config.totalRoundPoints} puntos de control en su configuración.`
+        );
+      }
 
-    // D. Validar que la secuencia enviada no sea mayor al límite permitido
-    if (sequenceOrder > config.totalRoundPoints) {
-      throw new BadRequestException(
-        `El orden de secuencia #${sequenceOrder} excede el límite máximo de puntos (${config.totalRoundPoints}) permitido para este conjunto.`
-      );
-    }
+      if (sequenceOrder > config.totalRoundPoints) {
+        throw new BadRequestException(
+          `El orden de secuencia #${sequenceOrder} excede el límite máximo de puntos (${config.totalRoundPoints}) permitido para este conjunto.`
+        );
+      }
 
-    if (sequenceOrder <= 0) {
-      throw new BadRequestException('El número de secuencia debe ser mayor a 0.');
-    }
+      if (sequenceOrder <= 0) {
+        throw new BadRequestException('El número de secuencia debe ser mayor a 0.');
+      }
 
-    // E. Validar si ya existe ese número de orden en el conjunto
-    const existingOrder = await this.pointRepo.findOne({
-      where: { tenantId, sequenceOrder },
-    });
+      // E. Validar si ya existe ese número de orden en el conjunto
+      const existingOrder = await this.pointRepo.findOne({
+        where: { tenantId, sequenceOrder },
+      });
 
-    if (existingOrder) {
-      throw new BadRequestException(
-        `Ya existe un punto de control con el orden #${sequenceOrder} ("${existingOrder.name}").`
-      );
+      if (existingOrder) {
+        throw new BadRequestException(
+          `Ya existe un punto de control con el orden #${sequenceOrder} ("${existingOrder.name}").`
+        );
+      }
+    } else {
+      // Si es un punto Master, aseguramos una secuencia neutral (ej: 0 o permitida) para que conviva sin chocar
+      sequenceOrder = 0;
     }
 
     // F. Generar un token único y seguro para el QR

@@ -1,3 +1,4 @@
+// 📄 src/rounds/rounds.service.ts
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -36,10 +37,9 @@ export class RoundsService {
   
     if (!round) return null;
   
-    // 🔍 AQUÍ ESTÁ LA CLAVE: Cada vez que se consulta la ronda activa, validamos si ya expiró
     const isExpired = await this.checkAndExpireRound(round, tenantId);
     if (isExpired) {
-      return null; // Si expiró, la cerramos en BD y devolvemos null para que la vista pase a "Fuera de Ronda"
+      return null;
     }
   
     const config = await this.configRepo.findOne({ where: { tenantId: tenantId } });
@@ -54,7 +54,6 @@ export class RoundsService {
    * 2. Iniciar nueva ronda de vigilancia
    */
   async startRound(userId: string, tenantId: string, notes?: string) {
-    // 🔒 Blindaje estricto: Búsqueda acotada al tenant y usuario actual
     const existingRound = await this.roundRepo.findOne({
       where: { tenantId, userId, status: 'IN_PROGRESS' },
       relations: ['user'],
@@ -63,17 +62,14 @@ export class RoundsService {
     if (existingRound) {
       existingRound.status = 'ABANDONED';
       existingRound.completedAt = new Date();
-      // Si quieres guardar las notas del reporte en la ronda abandonada antes de cerrarla:
-      // existingRound.notes = notes; 
       await this.roundRepo.save(existingRound);
 
-      // Notificar por correo
       try {
         if (existingRound.user && existingRound.user.email) {
           await this.notificationsService.notifyRoundAbandoned(
             existingRound.user.email,
             existingRound.id,
-            notes // Pasamos el reporte ingresado por el guardia si tu servicio lo recibe
+            notes
           );
         }
       } catch (error) {
@@ -81,7 +77,6 @@ export class RoundsService {
       }
     }
 
-    // 2. Creamos la nueva ronda limpia asociada estrictamente al tenant correcto
     const round = this.roundRepo.create({
       tenantId: tenantId,
       userId: userId,
@@ -89,7 +84,6 @@ export class RoundsService {
     });
     const savedRound = await this.roundRepo.save(round);
 
-    // Consultamos la configuración asegurando el match exacto del tenant
     const config = await this.configRepo.findOne({ where: { tenantId } });
 
     return {
@@ -99,7 +93,7 @@ export class RoundsService {
   }
 
   /**
-   * 3. Procesar escaneo QR con validación de tiempos, secuencias y finalización
+   * 3. Procesar escaneo QR con soporte para Punto Maestro (Portería)
    */
   async scanPoint(userId: string, tenantId: string, scanDto: ScanQrDto) {
     const round = await this.getActiveRound(userId, tenantId);
@@ -108,13 +102,13 @@ export class RoundsService {
     }
 
     // Buscar el punto físico al que pertenece el QR escaneado
-    const targetPoint = await this.pointRepo.findOne({
+    const scannedPoint = await this.pointRepo.findOne({
       where: { 
         qrCodeToken: scanDto.qrCodeToken, 
         tenantId: tenantId 
       },
     });
-    if (!targetPoint) {
+    if (!scannedPoint) {
       throw new NotFoundException('Código QR no reconocido para este conjunto.');
     }
 
@@ -130,19 +124,37 @@ export class RoundsService {
     const checksDone = round.checks.sort((a, b) => a.controlPoint.sequenceOrder - b.controlPoint.sequenceOrder);
     const nextExpectedOrder = checksDone.length + 1;
 
-    // Validación 1: Verificar el orden secuencial del punto escaneado
-    if (targetPoint.sequenceOrder !== nextExpectedOrder) {
+    // 🔑 DETECCIÓN DEL PUNTO MAESTRO
+    const isMaster = scannedPoint.name.toUpperCase().includes('MASTER');
+    let targetPoint = scannedPoint;
+
+    if (isMaster) {
+      // Si escanean el máster, el sistema busca automáticamente el siguiente punto real que le tocaba por secuencia
       const expectedPoint = await this.pointRepo.findOne({
         where: { tenantId: tenantId, sequenceOrder: nextExpectedOrder }
       });
-      const expectedName = expectedPoint ? `"${expectedPoint.name}"` : `punto #${nextExpectedOrder}`;
-      
-      throw new BadRequestException(
-        `Orden incorrecto. Debes escanear el punto #${nextExpectedOrder}: ${expectedName}`
-      );
+
+      if (!expectedPoint) {
+        throw new BadRequestException('No hay más puntos pendientes por completar en esta ronda.');
+      }
+
+      // Redirigimos el objetivo al punto que correspondía por secuencia, conservando la trazabilidad
+      targetPoint = expectedPoint;
+    } else {
+      // Validación 1: Verificar el orden secuencial normal del punto escaneado
+      if (scannedPoint.sequenceOrder !== nextExpectedOrder) {
+        const expectedPoint = await this.pointRepo.findOne({
+          where: { tenantId: tenantId, sequenceOrder: nextExpectedOrder }
+        });
+        const expectedName = expectedPoint ? `"${expectedPoint.name}"` : `punto #${nextExpectedOrder}`;
+        
+        throw new BadRequestException(
+          `Orden incorrecto. Debes escanear el punto #${nextExpectedOrder}: ${expectedName}`
+        );
+      }
     }
 
-    // Validación 2: Control de tiempos entre puntos (Inmune a desfaces de servidor)
+    // Validación 2: Control de tiempos entre puntos (Se aplica tanto a normales como al máster para evitar abusos)
     if (checksDone.length > 0) {
       const lastCheck = checksDone[checksDone.length - 1];
       
@@ -150,12 +162,7 @@ export class RoundsService {
       const lastScannedMs = lastCheck.scannedAt.getTime(); 
 
       const diffMs = nowMs - lastScannedMs;
-      const actualDiff = diffMs / 60000; // Convertir a minutos netos
-
-      console.log(`[Rondas] Comparación horaria exacta (TIMESTAMPTZ):`);
-      console.log(` - Servidor Node (Ahora): ${new Date(nowMs).toISOString()}`);
-      console.log(` - Base de datos (Último escaneo): ${new Date(lastScannedMs).toISOString()}`);
-      console.log(` - Tiempo transcurrido real: ${actualDiff.toFixed(2)} minutos`);
+      const actualDiff = diffMs / 60000;
 
       if (actualDiff < config.timePerPoint) {
         const remaining = Math.ceil(config.timePerPoint - actualDiff);
@@ -165,20 +172,42 @@ export class RoundsService {
       }
     }
 
-    // 4. Registrar marcación válida
+    // 4. Registrar marcación válida (Si fue master, guardamos nota indicando que se usó la portería)
+    const checkNotes = isMaster 
+      ? `[PUNTO MASTER] Validado remotamente desde portería. ${scanDto.notes || ''}` 
+      : scanDto.notes;
+
     const check = this.checkRepo.create({
       roundId: round.id,
       controlPointId: targetPoint.id,
-      notes: scanDto.notes,
+      notes: checkNotes,
       isValid: true,
     });
     await this.checkRepo.save(check);
 
-    // 5. ¿Es el último punto configurado? Completar la ronda
-    if (targetPoint.sequenceOrder === config.totalRoundPoints) {
-      round.status = 'COMPLETED';
-      round.completedAt = new Date();
-      await this.roundRepo.save(round);
+    // 🔑 LÓGICA DE CIERRE CORREGIDA: Validar frente al total de puntos normales (excluyendo MASTER)
+    const updatedRound = await this.roundRepo.findOne({
+      where: { id: round.id },
+      relations: ['checks', 'checks.controlPoint'],
+    });
+
+    const totalNormalPoints = await this.pointRepo
+      .createQueryBuilder('point')
+      .where('point.tenantId = :tenantId', { tenantId })
+      .andWhere('UPPER(point.name) NOT LIKE :master', { master: '%MASTER%' })
+      .getCount();
+
+    const completedNormalChecks = updatedRound?.checks.filter(
+      c => !c.controlPoint?.name.toUpperCase().includes('MASTER')
+    ).length || 0;
+
+    if (completedNormalChecks >= totalNormalPoints) {
+      const roundToComplete = await this.roundRepo.findOne({ where: { id: round.id } });
+      if (roundToComplete) {
+        roundToComplete.status = 'COMPLETED';
+        roundToComplete.completedAt = new Date();
+        await this.roundRepo.save(roundToComplete);
+      }
       
       return { 
         message: '¡Excelente! Has finalizado exitosamente todos los puntos de la ronda.', 
@@ -187,16 +216,18 @@ export class RoundsService {
       };
     }
 
+    const successMessage = isMaster
+      ? `Punto #${targetPoint.sequenceOrder} ("${targetPoint.name}") registrado exitosamente vía Punto Maestro.`
+      : `Punto #${targetPoint.sequenceOrder} registrado con éxito.`;
+
     return { 
-      message: `Punto #${targetPoint.sequenceOrder} registrado con éxito.`, 
+      message: successMessage, 
       check, 
       roundCompleted: false 
     };
   }
 
   async findCompletedByTenant(tenantId: string, filters?: { startDate?: string; endDate?: string }) {
-    console.log('Buscando todas las rondas para auditoría - Tenant:', tenantId, 'Filtros:', filters);
-    
     const query = this.roundRepo.createQueryBuilder('round')
       .leftJoinAndSelect('round.checks', 'checks')
       .leftJoinAndSelect('checks.controlPoint', 'controlPoint')
@@ -241,9 +272,6 @@ export class RoundsService {
     });
   }
 
-  /**
-   * 4. Forzar la expiración de la ronda activa y enviar notificación
-   */
   async forceExpireActiveRound(userId: string, tenantId: string) {
     const round = await this.roundRepo.findOne({
       where: { tenantId, userId, status: 'IN_PROGRESS' },
@@ -275,14 +303,13 @@ export class RoundsService {
   private async checkAndExpireRound(round: GuardRound, tenantId: string): Promise<boolean> {
     if (round.status !== 'IN_PROGRESS') return false;
   
-    // 🔒 Blindaje: Si no hay tenantId, rechazamos inmediatamente para evitar cruces
     if (!tenantId) {
       console.error('[Security] Intento de validar expiración sin tenantId');
       return false;
     }
 
     const config = await this.configRepo.findOne({ 
-      where: { tenantId: tenantId } // Forzamos la llave exacta
+      where: { tenantId: tenantId }
     });
 
     if (!config || !config.timeBetweenPoints) {

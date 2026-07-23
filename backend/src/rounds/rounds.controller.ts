@@ -2,51 +2,72 @@
 import { Controller, Get, Post, Body, UseGuards, Req, ParseUUIDPipe, Param, Query, BadRequestException } from '@nestjs/common';
 import { RoundsService } from './rounds.service';
 import { ScanQrDto } from './dto/scan-qr.dto';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
 
 @Controller('rounds')
 export class RoundsController {
   constructor(private readonly roundsService: RoundsService) {}
 
+  
   /**
    * 1. Obtener la ronda activa del guardia en curso
    */
   @Get('active')
+  @UseGuards(JwtAuthGuard) // 👈 FALTABA ESTO
   async getActiveRound(@Req() req: any) {
-    // Reemplaza los strings de prueba por tus UUIDs reales de Neon:
-    const userId = req.user?.id ; // 👈 ID de Ana Martínez
-    const tenantId = req.user?.tenantId ; // 👈 ID de Altos limonar
+    const userId = req.user?.sub || req.user?.id; // Usar sub o id según tu JWT
+    const tenantId = req.user?.tenantId;
+    
     console.log(`[Controller Audit] Usuario: ${userId} | TenantId recibido en la petición: ${tenantId}`);
+    
+    if (!userId || !tenantId) {
+      throw new BadRequestException('No se pudo identificar la sesión del usuario.');
+    }
+
     return this.roundsService.getActiveRound(userId, tenantId);
   }
   
-
   /**
-   * 2. Iniciar una nueva ronda de vigilancia recibiendo los datos del body
+   * 2. Iniciar una nueva ronda de vigilancia usando la sesión JWT
    */
   @Post('start')
-  async startRound(@Body() body: { userId: string; tenantId: string; notes?: string }) {
-    // Extraemos los campos que envió el frontend, incluyendo las notas opcionales
-    const { userId, tenantId, notes } = body;
+  @UseGuards(JwtAuthGuard) // 👈 Obligatorio para activar la validación del token
+  async startRound(
+    @Req() req: any,
+    @Body() body?: { notes?: string } // Opcional: solo si envías notas desde el frontend
+  ) {
+    // Extraemos de la sesión activa decodificada por el JWT
+    const userId = req.user.sub || req.user.id;
+    const tenantId = req.user.tenantId;
 
-    // Validamos por seguridad en el backend que lleguen los datos esenciales
+    // Validamos por seguridad en el backend que el token contenga los datos
     if (!userId || !tenantId) {
-      throw new BadRequestException('Se requiere el userId y el tenantId para iniciar la ronda.');
+      throw new BadRequestException('No se pudo identificar la sesión del usuario para iniciar la ronda.');
     }
 
-    // Pasamos 'notes' al servicio para que pueda guardarlas o enviarlas por correo
+    const notes = body?.notes;
+
+    // Pasamos los datos extraídos del JWT al servicio
     return this.roundsService.startRound(userId, tenantId, notes);
   }
-
+ 
   /**
    * 3. Registrar un escaneo de código QR
    */
   @Post('scan')
+  @UseGuards(JwtAuthGuard) // 👈 Obligatorio para activar la validación del token
   async scanPoint(
     @Req() req: any,
     @Body() scanQrDto: ScanQrDto,
   ) {
-    const userId = req.user?.id; // 👈 ID de Ana Martínez
-    const tenantId = req.user?.tenantId; // 👈 ID de Altos limonar
+    // Extraemos de la sesión activa decodificada por el JWT
+    const userId = req.user.sub || req.user.id;
+    const tenantId = req.user.tenantId;
+
+    if (!userId || !tenantId) {
+      throw new BadRequestException('No se pudo identificar la sesión del usuario.');
+    }
 
     return this.roundsService.scanPoint(userId, tenantId, scanQrDto);
   }

@@ -72,11 +72,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       token: response.accessToken,
       tenantId: response.user.tenantId,
       tenantSlug: payload.tenantSlug,
-      activeTenantId: response.user.tenantId, // Al iniciar sesión, el activo es su propio tenant base
+      activeTenantId: response.user.tenantId,
     };
 
     setState(newState);
-    window.localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(newState));
+    
+    // 👈 AQUÍ ESTABA EL DETALLE: Guardamos tanto el estado global como el token individual
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(newState));
+      window.localStorage.setItem('token', response.accessToken); // 👈 ¡Esta línea faltaba para Axios!
+    }
 
     return response.user;
   }, []);
@@ -85,6 +90,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setState(initialState);
     if (typeof window !== 'undefined') {
       window.localStorage.removeItem(AUTH_STORAGE_KEY);
+      window.localStorage.removeItem('token'); // 👈 Limpiamos también el token al salir
     }
   }, []);
 

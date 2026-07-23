@@ -42,7 +42,17 @@ const LoginPage = () => {
     setError('');
     setIsSubmitting(true);
     try {
-      const loggedInUser = await login(form);
+      // La función login devuelve la respuesta del backend ({ accessToken, user })
+      const response = await login(form); 
+      
+      // 👈 1. Extraemos y guardamos el token en el localStorage para las peticiones con Axios
+      const token = response?.accessToken || response?.data?.accessToken;
+      if (token) {
+        localStorage.setItem('token', token);
+      }
+
+      // 2. Determinamos el usuario y el rol correctamente
+      const loggedInUser = response?.user || response?.data?.user || user;
       const role = loggedInUser?.role || user?.role;
 
       if (role === 'SUPERADMIN') {
@@ -80,7 +90,6 @@ const LoginPage = () => {
       setIsSubmitting(false);
     }
   };
-
   return (
     <div className="login-container" style={{
       display: 'flex',
