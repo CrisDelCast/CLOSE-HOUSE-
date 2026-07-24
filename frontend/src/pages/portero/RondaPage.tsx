@@ -89,7 +89,7 @@ export default function RondaDashboard() {
     }
   }, [tenantId, user]);
 
-  // ⏱️ Cuenta regresiva en tiempo real y detección automática de expiración
+  // ⏱️ Cuenta regresiva fija y global desde el inicio de la ronda
   useEffect(() => {
     if (!activeRound || activeRound.status !== 'IN_PROGRESS' || !activeRound.startedAt) return;
 
@@ -105,7 +105,6 @@ export default function RondaDashboard() {
 
       if (remainingMs <= 0) {
         setRemainingTime(0);
-        // Si el tiempo expira en cliente, marcamos visualmente como abandonada/expirada
         setActiveRound(null);
         setWasRoundAbandoned(true);
         setStatusMessage({
@@ -176,7 +175,6 @@ export default function RondaDashboard() {
             qrCodeToken: decodedText
           });
 
-          // Si el backend marca la ronda como completada (COMPLETED)
           if (data.roundCompleted) {
             setActiveRound(null);
             setStatusMessage({
@@ -219,6 +217,12 @@ export default function RondaDashboard() {
     return activeRound.checks.some(check => check.controlPoint?.id === pointId);
   };
 
+  // Función auxiliar para contar las visitas de un punto externo en general (o filtrando checks actuales)
+  const getExternalPointVisits = (pointId: string) => {
+    if (!activeRound || !activeRound.checks) return 0;
+    return activeRound.checks.filter(c => c.controlPoint?.id === pointId).length;
+  };
+
   if (isLoading) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '200px', color: '#64748b', fontWeight: '500' }}>
@@ -227,11 +231,19 @@ export default function RondaDashboard() {
     );
   }
 
-  const normalPoints = controlPoints.filter(p => !p.name.toUpperCase().includes('MASTER'));
+  const normalPoints = controlPoints.filter(p => {
+    const name = p.name.toUpperCase();
+    return !name.includes('MASTER') && !name.includes('EXTERNO');
+  });
+
   const masterPoints = controlPoints.filter(p => p.name.toUpperCase().includes('MASTER'));
+  const externalPoints = controlPoints.filter(p => p.name.toUpperCase().includes('EXTERNO'));
 
   const completedNormalCount = activeRound?.checks?.filter(
-    c => !c.controlPoint?.name.toUpperCase().includes('MASTER')
+    c => {
+      const name = c.controlPoint?.name.toUpperCase() || '';
+      return !name.includes('MASTER') && !name.includes('EXTERNO');
+    }
   ).length || 0;
 
   return (
@@ -248,7 +260,7 @@ export default function RondaDashboard() {
             </span>
             
             <div style={{ marginTop: '12px', background: '#f8fafc', padding: '8px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-              <span style={{ fontSize: '13px', color: '#64748b' }}>Tiempo límite para el sig. punto:</span>
+              <span style={{ fontSize: '13px', color: '#64748b' }}>Tiempo límite de la ronda:</span>
               <div style={{ fontSize: '20px', fontWeight: 'bold', color: remainingTime !== null && remainingTime < 300 ? '#dc2626' : '#0f766e' }}>
                 {remainingTime !== null && remainingTime > 0 ? formatTime(remainingTime) : '00:00'}
               </div>
@@ -418,6 +430,57 @@ export default function RondaDashboard() {
                       </div>
                       <span style={{ fontSize: '11px', background: '#fae8ff', color: '#a21caf', padding: '4px 8px', borderRadius: '4px', fontWeight: '600' }}>
                         {completado ? 'Escaneado en la ronda' : 'Libre / Comodín'}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Listado de Puntos Externos (Máximo 2 visitas al día) */}
+          {externalPoints.length > 0 && (
+            <div style={{ background: '#fff', borderRadius: '12px', padding: '20px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)', border: '1px solid #38bdf8' }}>
+              <h3 style={{ color: '#0369a1', margin: '0 0 8px 0', fontSize: '16px' }}>🌐 Puntos Externos (2 veces al día)</h3>
+              <p style={{ fontSize: '13px', color: '#0284c7', marginTop: 0, marginBottom: '12px' }}>
+                Estos puntos se escanean de forma independiente a la ronda. Debes completarlos un máximo de 2 veces al día.
+              </p>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {externalPoints.map((point) => {
+                  const visitsCount = getExternalPointVisits(point.id);
+                  const isCompletedLimit = visitsCount >= 2;
+
+                  return (
+                    <div key={point.id} style={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      justifyContent: 'space-between',
+                      padding: '12px 16px', 
+                      borderRadius: '8px', 
+                      background: isCompletedLimit ? '#f0fdf4' : '#f0f9ff',
+                      border: `1px dashed ${isCompletedLimit ? '#22c55e' : '#38bdf8'}`
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center' }}>
+                        <div style={{ 
+                          width: '28px', height: '28px', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center', marginRight: '12px', fontSize: '14px',
+                          background: isCompletedLimit ? '#22c55e' : '#0284c7', color: '#fff'
+                        }}>
+                          🌐
+                        </div>
+                        <span style={{ color: isCompletedLimit ? '#166534' : '#0369a1', fontWeight: 'bold', fontSize: '14px' }}>
+                          {point.name}
+                        </span>
+                      </div>
+                      <span style={{ 
+                        fontSize: '11px', 
+                        background: isCompletedLimit ? '#dcfce7' : '#e0f2fe', 
+                        color: isCompletedLimit ? '#15803d' : '#0369a1', 
+                        padding: '4px 8px', 
+                        borderRadius: '4px', 
+                        fontWeight: '600' 
+                      }}>
+                        Visitas hoy: {visitsCount} / 2
                       </span>
                     </div>
                   );

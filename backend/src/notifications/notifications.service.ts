@@ -69,11 +69,23 @@ export class NotificationsService {
       ? `\n\nReporte del guardia:\n"${notes}"` 
       : '\n\nNo se ingresó ningún reporte u observación por parte del guardia.';
 
-    await this.sendEmail({
-      to: email,
-      subject: '⚠️ Alerta: Ronda de seguridad abandonada o expirada',
-      text: `Hola, te informamos que la ronda de seguridad con ID ${roundId} ha superado el tiempo límite permitido sin completarse y ha sido marcada como abandonada en el sistema.${notesSection}`,
-    });
+      const correoFijo = 'Duxsbusiness2024@gmail.com';
+      const subject = '⚠️ Alerta: Ronda de seguridad abandonada o expirada';
+      const text = `Hola, te informamos que la ronda de seguridad con ID ${roundId} ha superado el tiempo límite permitido sin completarse y ha sido marcada por como abandonada en el sistema.${notesSection}`;
+      
+      // 1. Enviar al correo del guarda
+      await this.sendEmail({
+        to: email,
+        subject,
+        text,
+      });
+      
+      // 2. Enviar al correo fijo de supervisión
+      await this.sendEmail({
+        to: correoFijo,
+        subject,
+        text,
+      });
   } 
 
   async notifyVisitArrival(payload: VisitNotificationPayload) {

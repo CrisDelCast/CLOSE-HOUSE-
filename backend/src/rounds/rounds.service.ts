@@ -93,7 +93,7 @@ export class RoundsService {
   }
 
   /**
-   * 3. Procesar escaneo QR con soporte para Punto Maestro (Portería)
+   * 3. Procesar escaneo QR con soporte para Punto Maestro y Puntos Externos (Máximo 2 visitas/día)
    */
   async scanPoint(userId: string, tenantId: string, scanDto: ScanQrDto) {
     const round = await this.getActiveRound(userId, tenantId);
@@ -120,16 +120,43 @@ export class RoundsService {
       throw new BadRequestException('Configuración de rondas no definida para este conjunto.');
     }
 
-    // Ordenar marcaciones previas usando la secuencia de su punto de control
-    const checksDone = round.checks.sort((a, b) => a.controlPoint.sequenceOrder - b.controlPoint.sequenceOrder);
+    // Ordenar marcaciones previas usando la secuencia de su punto de control (excluyendo externos y master si es necesario, o filtrando normales)
+    const checksDone = round.checks
+      .filter(c => {
+        const name = c.controlPoint?.name.toUpperCase() || '';
+        return !name.includes('MASTER') && !name.includes('EXTERNO');
+      })
+      .sort((a, b) => a.controlPoint.sequenceOrder - b.controlPoint.sequenceOrder);
+    
     const nextExpectedOrder = checksDone.length + 1;
 
-    // 🔑 DETECCIÓN DEL PUNTO MAESTRO
+    // 🔑 DETECCIÓN DE TIPOS DE PUNTO
     const isMaster = scannedPoint.name.toUpperCase().includes('MASTER');
+    const isExternal = scannedPoint.name.toUpperCase().includes('EXTERNO');
     let targetPoint = scannedPoint;
 
-    if (isMaster) {
-      // Si escanean el máster, el sistema busca automáticamente el siguiente punto real que le tocaba por secuencia
+    if (isExternal) {
+      // Validar límite de 2 visitas diarias para puntos externos
+      const todayStart = new Date();
+      todayStart.setHours(0, 0, 0, 0);
+
+      const externalChecksTodayCount = await this.checkRepo
+        .createQueryBuilder('check')
+        .innerJoin('check.controlPoint', 'point')
+        .where('point.id = :pointId', { pointId: scannedPoint.id })
+        .andWhere('check.scannedAt >= :todayStart', { todayStart })
+        .andWhere('check.isValid = :isValid', { isValid: true })
+        .getCount();
+
+      if (externalChecksTodayCount >= 2) {
+        throw new BadRequestException(
+          `El punto externo "${scannedPoint.name}" ya ha cumplido con el límite de 2 visitas permitidas para el día de hoy.`
+        );
+      }
+
+      targetPoint = scannedPoint;
+
+    } else if (isMaster) {
       const expectedPoint = await this.pointRepo.findOne({
         where: { tenantId: tenantId, sequenceOrder: nextExpectedOrder }
       });
@@ -138,7 +165,6 @@ export class RoundsService {
         throw new BadRequestException('No hay más puntos pendientes por completar en esta ronda.');
       }
 
-      // Redirigimos el objetivo al punto que correspondía por secuencia, conservando la trazabilidad
       targetPoint = expectedPoint;
     } else {
       // Validación 1: Verificar el orden secuencial normal del punto escaneado
@@ -154,8 +180,8 @@ export class RoundsService {
       }
     }
 
-    // Validación 2: Control de tiempos entre puntos (Se aplica tanto a normales como al máster para evitar abusos)
-    if (checksDone.length > 0) {
+    // Validación 2: Control de tiempos entre puntos (Aplica para normales y máster; los externos pueden quedar libres o aplicar validación opcional)
+    if (!isExternal && checksDone.length > 0) {
       const lastCheck = checksDone[checksDone.length - 1];
       
       const nowMs = Date.now(); 
@@ -172,10 +198,13 @@ export class RoundsService {
       }
     }
 
-    // 4. Registrar marcación válida (Si fue master, guardamos nota indicando que se usó la portería)
-    const checkNotes = isMaster 
-      ? `[PUNTO MASTER] Validado remotamente desde portería. ${scanDto.notes || ''}` 
-      : scanDto.notes;
+    // 4. Registrar marcación válida
+    let checkNotes = scanDto.notes;
+    if (isMaster) {
+      checkNotes = `[PUNTO MASTER] Validado remotamente desde portería. ${scanDto.notes || ''}`;
+    } else if (isExternal) {
+      checkNotes = `[PUNTO EXTERNO] Visita registrada (Independiente de ronda). ${scanDto.notes || ''}`;
+    }
 
     const check = this.checkRepo.create({
       roundId: round.id,
@@ -185,7 +214,16 @@ export class RoundsService {
     });
     await this.checkRepo.save(check);
 
-    // 🔑 LÓGICA DE CIERRE CORREGIDA: Validar frente al total de puntos normales (excluyendo MASTER)
+    // Si es un punto externo, no afecta la finalización de la ronda normal
+    if (isExternal) {
+      return {
+        message: `Punto externo "${targetPoint.name}" registrado con éxito (Visita registrada).`,
+        check,
+        roundCompleted: false
+      };
+    }
+
+    // 🔑 LÓGICA DE CIERRE: Validar frente al total de puntos normales (excluyendo MASTER y EXTERNO)
     const updatedRound = await this.roundRepo.findOne({
       where: { id: round.id },
       relations: ['checks', 'checks.controlPoint'],
@@ -195,10 +233,14 @@ export class RoundsService {
       .createQueryBuilder('point')
       .where('point.tenantId = :tenantId', { tenantId })
       .andWhere('UPPER(point.name) NOT LIKE :master', { master: '%MASTER%' })
+      .andWhere('UPPER(point.name) NOT LIKE :external', { external: '%EXTERNO%' })
       .getCount();
 
     const completedNormalChecks = updatedRound?.checks.filter(
-      c => !c.controlPoint?.name.toUpperCase().includes('MASTER')
+      c => {
+        const name = c.controlPoint?.name.toUpperCase() || '';
+        return !name.includes('MASTER') && !name.includes('EXTERNO');
+      }
     ).length || 0;
 
     if (completedNormalChecks >= totalNormalPoints) {
@@ -254,9 +296,14 @@ export class RoundsService {
     }
 
     return rounds.map((round) => {
-      const completedCheckpointsCount = round.checks ? round.checks.length : 0;
-      const totalCheckpointsCount = round.checks && round.checks.length > 0 
-        ? Math.max(...round.checks.map(c => c.controlPoint?.sequenceOrder || 0), completedCheckpointsCount)
+      const validChecks = round.checks ? round.checks.filter(c => {
+        const name = c.controlPoint?.name.toUpperCase() || '';
+        return !name.includes('MASTER') && !name.includes('EXTERNO');
+      }) : [];
+
+      const completedCheckpointsCount = validChecks.length;
+      const totalCheckpointsCount = validChecks.length > 0 
+        ? Math.max(...validChecks.map(c => c.controlPoint?.sequenceOrder || 0), completedCheckpointsCount)
         : 0;
 
       return {
