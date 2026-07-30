@@ -9,6 +9,7 @@ import { Vehicle } from './entities/vehicle.entity';
 import { CreateApartmentDto } from './dto/create-apartment.dto';
 import { CreateParkingSpotDto } from './dto/create-parking-spot.dto';
 import { CreateVehicleDto } from './dto/create-vehicle.dto';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class PropertiesService {
@@ -19,6 +20,7 @@ export class PropertiesService {
     private readonly parkingSpotRepo: Repository<ParkingSpot>,
     @InjectRepository(Vehicle)
     private readonly vehicleRepo: Repository<Vehicle>,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   // ==========================================
@@ -135,4 +137,62 @@ export class PropertiesService {
 
     return vehicle;
   }
+
+  // ==========================================
+  // 🔍 BÚSQUEDA DE APARTAMENTO POR CÉDULA DEL RESIDENTE Y TENANT
+  // ==========================================
+
+  async findApartmentByResidentDocument(document: string, tenantId: string): Promise<Apartment> {
+    const cleanDoc = document.trim();
+
+    const apartment = await this.apartmentRepo
+      .createQueryBuilder('apartment')
+      .leftJoinAndSelect('apartment.residents', 'resident')
+      .leftJoinAndSelect('apartment.parkingSpots', 'parkingSpot')
+      .leftJoinAndSelect('parkingSpot.vehicles', 'vehicle')
+      .where('apartment.tenantId = :tenantId', { tenantId })
+      // 🛠️ Usamos 'resident.documentId' que es como se llama el campo en la entidad Resident
+      .andWhere('resident.documentId = :document', { document: cleanDoc }) 
+      .getOne();
+
+    if (!apartment) {
+      throw new NotFoundException(`No se encontró ningún apartamento asociado a la cédula ${cleanDoc} en este conjunto.`);
+    }
+
+    return apartment;
+  }
+
+  async sendInstantAlert(apartmentId: string, subject: string, message: string) {
+    // 1. Buscamos el apartamento y sus residentes usando el repositorio correcto
+    const apartment = await this.apartmentRepo.findOne({
+      where: { id: apartmentId },
+      relations: ['residents'],
+    });
+
+    if (!apartment || !apartment.residents || apartment.residents.length === 0) {
+      throw new NotFoundException('No se encontraron residentes asociados a este apartamento.');
+    }
+    const validResidents = apartment.residents
+      .filter(resident => resident.email && resident.fullName)
+      .map(resident => ({
+        email: resident.email as string,
+        fullName: resident.fullName,
+      }));
+
+    if (validResidents.length === 0) {
+      throw new NotFoundException('No hay residentes con correo electrónico válido en este apartamento.');
+    }
+
+    await this.notificationsService.notifyApartmentResidents(
+      validResidents,
+      subject,
+      message,
+    );
+
+
+    return { message: 'Notificación enviada exitosamente a los residentes.' };
+  }
+
+
+  
 }

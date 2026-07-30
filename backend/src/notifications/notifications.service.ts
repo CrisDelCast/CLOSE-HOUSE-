@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Body, Injectable, Logger, NotFoundException, Post } from '@nestjs/common';
 import { Twilio } from 'twilio';
 import { Resend } from 'resend';
 
@@ -199,4 +199,19 @@ export class NotificationsService {
       );
     }
   }
+  async notifyApartmentResidents(residents: { email: string; fullName: string }[], subject: string, text: string) {
+    for (const resident of residents) {
+      if (resident.email) {
+        await this.sendEmail({
+          to: resident.email,
+          subject,
+          text: `Hola ${resident.fullName},\n\n${text}`,
+        });
+      }
+    }
+  }
+
+  
+
+ 
 }

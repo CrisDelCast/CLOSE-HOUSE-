@@ -54,6 +54,22 @@ export class PropertiesController {
     return await this.propertiesService.findOneByPlateAndTenant(plate, tenantId);
   }
 
+  @Get('residents/document/:document')
+  @UseGuards(JwtAuthGuard)
+  async findByResidentDocument(@Req() req: any, @Param('document') document: string) {
+    const tenantId = req.user?.tenantId || req.headers['x-tenant-id'];
+    return await this.propertiesService.findApartmentByResidentDocument(document, tenantId);
+  }
+
+  @Post('send-alert')
+  async sendAlert(@Body() body: { apartmentId: string; subject: string; message: string }) {
+    return await this.propertiesService.sendInstantAlert(
+      body.apartmentId,
+      body.subject,
+      body.message,
+    );
+  }
+
 
 
   
