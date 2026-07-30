@@ -12,6 +12,7 @@ import { VisitorsModule } from './visitors/visitors.module';
 import { ExamsModule } from './exams/exams.module';
 import { RoundsModule } from './rounds/rounds.module';
 import { PropertiesModule } from './properties/properties.module';
+import { VehicleReportsModule } from './reports/vehicle-reports.module';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { PropertiesModule } from './properties/properties.module';
     ExamsModule,
     RoundsModule,
     PropertiesModule,
+    VehicleReportsModule
   ],
   controllers: [AppController],
   providers: [AppService],

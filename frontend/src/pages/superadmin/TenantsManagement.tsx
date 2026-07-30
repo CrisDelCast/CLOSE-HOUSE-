@@ -8,7 +8,7 @@ import api from '../../api/client';
 import axios from 'axios';
 import logoDuxs from '../../assets/logo-duxssecurity.png';
 
-// Interfaces locales para los Puntos de Control
+// Interfaces locales
 interface ControlPoint {
   id: string;
   name: string;
@@ -16,7 +16,13 @@ interface ControlPoint {
   sequenceOrder: number;
 }
 
-// Estado inicial para el formulario
+interface LocationImage {
+  id: string;
+  imageUrl: string; 
+  description?: string;
+  checkpointId?: string;
+}
+
 const INITIAL_FORM_STATE = {
   name: '',
   slug: '',
@@ -34,16 +40,30 @@ const INITIAL_FORM_STATE = {
   vehicleControlSchedule: '22:00 a 05:00',
 };
 
+
+// Expresión regular para validar formato Slug (solo minusculas, números y guiones)
+const SLUG_REGEX = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+// Expresión regular básica para emails
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+// Archivos de imagen permitidos y tamaño máximo (5MB)
+const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5 MB
+
 export default function TenantsManagement() {
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
   const { user } = useAuthContext();
   const queryClient = useQueryClient();
 
-  // Estados
+  // Estados principales
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [feedback, setFeedback] = useState('');
   const [selectedTenantForPoints, setSelectedTenantForPoints] = useState<Tenant | null>(null);
   const [newPointName, setNewPointName] = useState('');
   const [pointFeedback, setPointFeedback] = useState('');
+
+  // Estados de errores por campo
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+  const [pointError, setPointError] = useState('');
 
   // Traer Tenants
   const { data: tenants, isLoading, isError } = useQuery({
@@ -53,33 +73,171 @@ export default function TenantsManagement() {
 
   const safeTenants: Tenant[] = Array.isArray(tenants) ? tenants : [];
 
+  // Estados para imágenes de ubicación
+  const [selectedTenantForImages, setSelectedTenantForImages] = useState<Tenant | null>(null);
+  const [imageFiles, setImageFiles] = useState<FileList | null>(null);
+  const [imageFeedback, setImageFeedback] = useState('');
+  const [activeImageTab, setActiveImageTab] = useState<'upload' | 'list'>('upload');
+  const [existingImages, setExistingImages] = useState<LocationImage[]>([]);
+  const [isLoadingImages, setIsLoadingImages] = useState(false);
+
   // Traer Puntos de Control
   const { data: controlPoints, isLoading: isLoadingPoints } = useQuery<ControlPoint[]>({
-    queryKey: ['controlPoints', selectedTenantForPoints?.id],
+    queryKey: ['controlPoints', selectedTenantForPoints?.id || selectedTenantForImages?.id],
     queryFn: async () => {
-      if (!selectedTenantForPoints?.id) return [];
+      const tenantId = selectedTenantForPoints?.id || selectedTenantForImages?.id;
+      if (!tenantId) return [];
       try {
-        const { data } = await api.get(`/control-points/tenant/${selectedTenantForPoints.id}`);
+        const { data } = await api.get(`/control-points/tenant/${tenantId}`);
         return Array.isArray(data) ? data : [];
       } catch (error) {
         console.error("Error al obtener los puntos de control:", error);
         return [];
       }
     },
-    enabled: !!selectedTenantForPoints?.id,
+    enabled: !!selectedTenantForPoints?.id || !!selectedTenantForImages?.id,
   });
 
   const safeControlPoints: ControlPoint[] = Array.isArray(controlPoints) ? controlPoints : [];
-
   const [formData, setFormData] = useState(INITIAL_FORM_STATE);
 
-  // Mutación para crear Tenant
+  // ---------------------------------------------------------------------------
+  // 🔍 VALIDACIONES EN FRONTEND
+  // ---------------------------------------------------------------------------
+
+  const validateTenantForm = (): boolean => {
+    const errors: Record<string, string> = {};
+
+    if (!formData.name.trim()) {
+      errors.name = 'El nombre del conjunto es obligatorio.';
+    }
+
+    const cleanSlug = formData.slug.toLowerCase().trim();
+    if (!cleanSlug) {
+      errors.slug = 'El URL Slug es obligatorio.';
+    } else if (!SLUG_REGEX.test(cleanSlug)) {
+      errors.slug = 'El slug solo puede contener letras minúsculas, números y guiones (ej: torres-del-parque).';
+    }
+
+    if (!formData.adminName.trim()) {
+      errors.adminName = 'El nombre del administrador es obligatorio.';
+    }
+
+    if (!formData.adminEmail.trim()) {
+      errors.adminEmail = 'El correo electrónico es obligatorio.';
+    } else if (!EMAIL_REGEX.test(formData.adminEmail.trim())) {
+      errors.adminEmail = 'Ingrese un correo electrónico válido.';
+    }
+
+    if (formData.totalUnits !== '' && Number(formData.totalUnits) < 0) {
+      errors.totalUnits = 'Las unidades deben ser un número positivo.';
+    }
+
+    if (formData.totalParkingSlots !== '' && Number(formData.totalParkingSlots) < 0) {
+      errors.totalParkingSlots = 'Los parqueaderos deben ser un número positivo.';
+    }
+
+    setFormErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
+  const validatePointForm = (): boolean => {
+    if (!newPointName.trim()) {
+      setPointError('El nombre del punto de control no puede estar vacío.');
+      return false;
+    }
+    if (newPointName.trim().length < 3) {
+      setPointError('El nombre debe contener al menos 3 caracteres.');
+      return false;
+    }
+    setPointError('');
+    return true;
+  };
+
+  const validateImageFiles = (files: FileList | null): boolean => {
+    if (!files || files.length === 0) {
+      setImageFeedback('Selecciona al menos una imagen para subir.');
+      return false;
+    }
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
+        setImageFeedback(`El archivo "${file.name}" no es válido. Solo se admiten imágenes JPG, PNG o WEBP.`);
+        return false;
+      }
+      if (file.size > MAX_FILE_SIZE) {
+        setImageFeedback(`El archivo "${file.name}" excede el límite permitido de 5 MB.`);
+        return false;
+      }
+    }
+
+    setImageFeedback('');
+    return true;
+  };
+
+  // ---------------------------------------------------------------------------
+  // HANDLERS & MUTATIONS
+  // ---------------------------------------------------------------------------
+
+  const fetchExistingImages = async (tenantId: string) => {
+    setIsLoadingImages(true);
+    try {
+      const { data } = await api.get(`/tenants/${tenantId}/location-images`);
+      setExistingImages(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error("Error al cargar imágenes de ubicación:", error);
+      setExistingImages([]);
+    } finally {
+      setIsLoadingImages(false);
+    }
+  };
+
+  // ---------------------------------------------------------------------------
+// 🔍 MUTACIÓN Y VALIDACIÓN PARA ASIGNAR CHECKPOINT A UNA IMAGEN
+// ---------------------------------------------------------------------------
+
+  const assignImageMutation = useMutation({
+    mutationFn: async ({ imageId, checkpointId }: { imageId: string; checkpointId: string }) => {
+      // 1. Validación en Frontend antes de llamar a la API
+      if (!imageId) {
+        throw new Error('El ID de la imagen es obligatorio.');
+      }
+
+      // 2. Petición PATCH enviando checkpointId en el BODY de la petición
+      const { data } = await api.patch(`/tenants/location-images/${imageId}/checkpoint`, {
+        checkpointId: checkpointId || null, // Si es string vacío, envía null para desasociar
+      });
+
+      return data;
+    },
+    onSuccess: (_, variables) => {
+      // Mensaje dinámico según si asoció o desasoció
+      const mensaje = variables.checkpointId 
+        ? '¡Punto de control asociado correctamente!' 
+        : '¡Imagen desasociada del punto de control!';
+      
+      // Opcional: mostrar notificación o feedback rápido
+      console.log(mensaje);
+
+      // Recargar la lista de imágenes para reflejar los cambios
+      if (selectedTenantForImages) {
+        fetchExistingImages(selectedTenantForImages.id);
+      }
+    },
+    onError: (error: any) => {
+      const errorMsg = error?.response?.data?.message || error?.message || 'Error al asociar la imagen al punto de control.';
+      alert(`❌ ${errorMsg}`);
+    }
+  });
+
   const createMutation = useMutation({
     mutationFn: createTenant,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tenants'] });
       setIsModalOpen(false);
       setFeedback('');
+      setFormErrors({});
       setFormData(INITIAL_FORM_STATE);
       alert('¡Conjunto Residencial y Configuración de Rondas creados con éxito!');
     },
@@ -92,7 +250,6 @@ export default function TenantsManagement() {
     },
   });
 
-  // Mutación para agregar punto
   const addPointMutation = useMutation({
     mutationFn: async (payload: { name: string; sequenceOrder: number; tenantId: string }) => {
       const { data } = await api.post('/control-points', payload);
@@ -102,6 +259,7 @@ export default function TenantsManagement() {
       queryClient.invalidateQueries({ queryKey: ['controlPoints', selectedTenantForPoints?.id] });
       setNewPointName('');
       setPointFeedback('');
+      setPointError('');
     },
     onError: (error) => {
       if (axios.isAxiosError(error)) {
@@ -112,24 +270,68 @@ export default function TenantsManagement() {
     },
   });
 
+  const uploadImagesMutation = useMutation({
+    mutationFn: async ({ tenantId, files, description }: { tenantId: string; files: FileList; description?: string }) => {
+      const formData = new FormData();
+      for (let i = 0; i < files.length; i++) {
+        formData.append('images', files[i]);
+      }
+      if (description) {
+        formData.append('description', description);
+      }
+
+      const { data } = await api.post(`/tenants/location-images?tenantId=${tenantId}`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      return data;
+    },
+    onSuccess: () => {
+      setImageFeedback('¡Imágenes subidas con éxito!');
+      setImageFiles(null);
+      if (selectedTenantForImages) {
+        fetchExistingImages(selectedTenantForImages.id);
+      }
+      setTimeout(() => {
+        setImageFeedback('');
+        setActiveImageTab('list');
+      }, 1000);
+    },
+    onError: (error) => {
+      if (axios.isAxiosError(error)) {
+        setImageFeedback(error.response?.data?.message || 'Error al subir las imágenes.');
+      } else {
+        setImageFeedback('Ocurrió un error inesperado.');
+      }
+    },
+  });
+
   const handleChange = (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+    const { name, value } = e.target;
+    setFormData((prev) => ({ ...prev, [name]: value }));
+
+    // Limpia el error del campo específico a medida que el usuario escribe
+    if (formErrors[name]) {
+      setFormErrors((prev) => ({ ...prev, [name]: '' }));
+    }
   };
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setFeedback('');
 
+    // Prevenir mutación si la validación falla
+    if (!validateTenantForm()) return;
+
     const payload: CreateTenantInput = {
-      name: formData.name,
+      name: formData.name.trim(),
       slug: formData.slug.toLowerCase().trim(),
       phoneCode: formData.phoneCode,
       totalUnits: parseInt(formData.totalUnits) || 0,
       totalParkingSlots: parseInt(formData.totalParkingSlots) || 0,
       scheduleType: formData.scheduleType,
-      adminName: formData.adminName,
-      adminEmail: formData.adminEmail,
-      adminPhone: formData.adminPhone,
+      adminName: formData.adminName.trim(),
+      adminEmail: formData.adminEmail.trim(),
+      adminPhone: formData.adminPhone.trim(),
       rulesText: formData.rulesText || undefined,
       roundConfig: {
         totalRoundPoints: parseInt(formData.totalRoundPoints) || 5,
@@ -144,7 +346,9 @@ export default function TenantsManagement() {
 
   const handleAddPointSubmit = (e: FormEvent) => {
     e.preventDefault();
-    if (!selectedTenantForPoints?.id || !newPointName.trim()) return;
+    if (!selectedTenantForPoints?.id) return;
+
+    if (!validatePointForm()) return;
 
     const nextSequence = safeControlPoints.length + 1;
 
@@ -155,7 +359,16 @@ export default function TenantsManagement() {
     });
   };
 
-  // Estilo unificado de "Cuadrito Dorado" con los colores del Login
+  const handleImageChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (validateImageFiles(files)) {
+      setImageFiles(files);
+    } else {
+      setImageFiles(null);
+      e.target.value = ''; // Resetea el input file si no pasa la validación
+    }
+  };
+
   const goldenBadgeStyle = {
     display: 'inline-block',
     background: 'rgba(212, 175, 55, 0.12)',
@@ -175,7 +388,6 @@ export default function TenantsManagement() {
       boxSizing: 'border-box',
       minHeight: '100vh',
       color: '#ffffff',
-      // Mismo fondo sofisticado del Login:
       backgroundColor: '#0c0c0e',
       backgroundImage: `
         radial-gradient(circle at 50% 50%, rgba(212, 175, 55, 0.08) 0%, rgba(12, 12, 14, 0) 70%),
@@ -185,7 +397,6 @@ export default function TenantsManagement() {
       backgroundSize: '100% 100%, 24px 24px, 24px 24px',
     }}>
       
-      {/* Estilos dinámicos para coherencia en inputs y efectos hover */}
       <style>{`
         .custom-input {
           background-color: #121214 !important;
@@ -202,6 +413,15 @@ export default function TenantsManagement() {
         .custom-input:focus {
           border-color: #D4AF37 !important;
           box-shadow: 0 0 0 3px rgba(212, 175, 55, 0.15) !important;
+        }
+        .custom-input.is-invalid {
+          border-color: #f87171 !important;
+        }
+        .error-msg {
+          color: #f87171;
+          font-size: 12px;
+          margin-top: 4px;
+          display: block;
         }
         .btn-gold {
           background: #D4AF37;
@@ -220,8 +440,9 @@ export default function TenantsManagement() {
           transform: translateY(-1px);
           box-shadow: 0 6px 16px rgba(212, 175, 55, 0.3);
         }
-        .btn-gold:active:not(:disabled) {
-          transform: translateY(1px) scale(0.98);
+        .btn-gold:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
         }
         .btn-dark-outline {
           background: rgba(22, 22, 26, 0.8);
@@ -238,34 +459,15 @@ export default function TenantsManagement() {
           color: #ffffff;
           border-color: #D4AF37;
         }
-        @media (max-width: 768px) {
-          .responsive-title {
-            font-size: 28px !important; /* Baja de 50px a 28px */
-          }
-          .responsive-subtitle {
-            font-size: 16px !important; /* Baja de 30px a 16px */
-          }
-          .responsive-table th {
-            font-size: 14px !important; /* Encabezados más sutiles */
-            padding: 10px !important;
-          }
-          .responsive-table td {
-            font-size: 13px !important; /* Texto de celdas más compacto */
-            padding: 10px !important;
-          }
-          .responsive-badge {
-            font-size: 12px !important; /* Ajusta los textos dentro de los badges dorados */
-          }
-        }  
       `}</style>
 
       {/* Encabezado */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '28px' }}>
         <div>
-          <h2 className="responsive-title" style={{ fontSize: '50px', fontWeight: '700', color: '#ffffff', margin: 0, letterSpacing: '0.5px' }}>
+          <h2 style={{ fontSize: '36px', fontWeight: '700', color: '#ffffff', margin: 0 }}>
             Gestión de Conjuntos Residenciales
           </h2>
-          <p className="responsive-subtitle" style={{ margin: '4px 0 0 0', color: '#a3a3a3', fontSize: '30px' }}>Supervisión, infraestructura y configuración de rondas</p>
+          <p style={{ margin: '4px 0 0 0', color: '#a3a3a3', fontSize: '16px' }}>Supervisión, infraestructura y configuración de rondas</p>
         </div>
         {user?.role === 'SUPERADMIN' && (
           <button onClick={() => setIsModalOpen(true)} className="btn-gold">
@@ -274,65 +476,62 @@ export default function TenantsManagement() {
         )}
       </div>
 
-      {/* Estados de Carga y Error */}
-      {isLoading && <p style={{ color: '#a3a3a3', fontSize: '14px' }}>⏳ Cargando conjuntos residenciales desde Neon...</p>}
+      {isLoading && <p style={{ color: '#a3a3a3', fontSize: '14px' }}>⏳ Cargando conjuntos residenciales...</p>}
       {isError && <p style={{ color: '#f87171', fontWeight: '500' }}>❌ No se pudieron cargar los conjuntos.</p>}
 
       {/* Tabla de Tenants */}
       {!isLoading && tenants && (
-        <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-            <table className="responsive-table" style={{ width: '100%', minWidth: '1000px', borderCollapse: 'collapse', textAlign: 'left' }}>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', minWidth: '1000px', borderCollapse: 'collapse', textAlign: 'left' }}>
             <thead>
-              <tr style={{ background: 'rgba(136, 126, 38, 0.8)', color: '#ffffff', fontWeight: '900', borderBottom: '1px solid #2e2e33', fontSize: '30px', letterSpacing: '1px', textTransform: 'uppercase' }}>
-                <th style={{ padding: '16px' ,color: '#ffffff',fontSize: '18px'}}>Nombre del Conjunto</th>
-                <th style={{ padding: '16px',color: '#ffffff',fontSize: '18px' }}>URL Slug</th>
-                <th style={{ padding: '16px',color: '#ffffff',fontSize: '18px' }}>Capacidad / Tipo</th>
-                <th style={{ padding: '16px',color: '#ffffff',fontSize: '18px' }}>Administrador</th>
-                <th style={{ padding: '16px',color: '#ffffff',fontSize: '18px'}}>Estado</th>
-                <th style={{ padding: '16px',color: '#ffffff',fontSize: '18px'}}>Acciones</th>
+              <tr style={{ background: 'rgba(136, 126, 38, 0.8)', color: '#ffffff', fontWeight: '900', borderBottom: '1px solid #2e2e33', fontSize: '16px' }}>
+                <th style={{ padding: '16px' }}>Nombre del Conjunto</th>
+                <th style={{ padding: '16px' }}>URL Slug</th>
+                <th style={{ padding: '16px' }}>Capacidad / Tipo</th>
+                <th style={{ padding: '16px' }}>Administrador</th>
+                <th style={{ padding: '16px' }}>Imágenes Ubicación</th>
+                <th style={{ padding: '16px' }}>Acciones</th>
               </tr>
             </thead>
             <tbody>
               {safeTenants.length === 0 ? (
                 <tr>
                   <td colSpan={6} style={{ padding: '32px', textAlign: 'center', color: '#a3a3a3' }}>
-                    No hay conjuntos residenciales registrados en el sistema.
+                    No hay conjuntos residenciales registrados.
                   </td>
                 </tr>
               ) : (
                 safeTenants.map((tenant: Tenant) => (
                   <tr key={tenant.id} style={{ borderBottom: '1px solid #1c1c1f', color: '#ffffff' }}>
-                    {/* Nombre en Cuadrito Dorado del Login */}
                     <td style={{ padding: '20px' }}>
-                      <span className="responsive-badge" style={goldenBadgeStyle}>
-                        {tenant.name}
-                      </span>
+                      <span style={goldenBadgeStyle}>{tenant.name}</span>
                     </td>
-                    {/* Slug con badge */}
                     <td style={{ padding: '16px' }}>
-                      <span className="responsive-badge" style={{ ...goldenBadgeStyle, fontSize: '20px', padding: '4px 8px', background: 'rgba(212, 175, 55, 0.05)' }}>
+                      <span style={{ ...goldenBadgeStyle, fontSize: '13px', padding: '4px 8px', background: 'rgba(212, 175, 55, 0.05)' }}>
                         /{tenant.slug}
                       </span>
                     </td>
-                    <td style={{ padding: '16px', fontSize: '16px', color: '#a3a3a3' }}>
+                    <td style={{ padding: '16px', fontSize: '14px', color: '#a3a3a3' }}>
                       🏢 <strong>{tenant.totalUnits}</strong> Unidades<br />
                       🚗 <strong>{tenant.totalParkingSlots}</strong> Parqueaderos
                     </td>
-                    <td style={{ padding: '16px', fontSize: '16px' }}>
+                    <td style={{ padding: '16px', fontSize: '14px' }}>
                       <strong style={{ color: '#ffffff' }}>{tenant.adminName}</strong><br />
                       <span style={{ color: '#a3a3a3' }}>{tenant.adminEmail}</span>
                     </td>
                     <td style={{ padding: '16px' }}>
-                      <span style={{ 
-                        padding: '6px 10px', borderRadius: '12px', fontSize: '11px', fontWeight: 'bold',
-                        background: tenant.status === 'ACTIVE' ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)',
-                        color: tenant.status === 'ACTIVE' ? '#34d399' : '#f87171',
-                        border: tenant.status === 'ACTIVE' ? '1px solid rgba(16, 185, 129, 0.2)' : '1px solid rgba(239, 68, 68, 0.2)'
-                      }}>
-                        {tenant.status === 'ACTIVE' ? '🟢 Activo' : '🔴 Suspendido'}
-                      </span>
+                      <button
+                        onClick={() => {
+                          setSelectedTenantForImages(tenant);
+                          setActiveImageTab('upload');
+                          fetchExistingImages(tenant.id);
+                        }}
+                        className="btn-dark-outline"
+                      >
+                        🖼️ Gestionar Imágenes
+                      </button>
                     </td>
-                    <td style={{ padding: '16px'}}>
+                    <td style={{ padding: '16px' }}>
                       <button
                         onClick={() => setSelectedTenantForPoints(tenant)}
                         className="btn-dark-outline"
@@ -348,12 +547,165 @@ export default function TenantsManagement() {
         </div>
       )}
 
-      {/* 📍 SECCIÓN: CONFIGURACIÓN DE CÓDIGOS QR (Coherente con Login) */}
+      {/* 🖼️ PANEL DE GESTIÓN DE IMÁGENES Y ASOCIACIÓN A PUNTOS */}
+      {selectedTenantForImages && (
+        <div style={{ 
+          background: 'rgba(22, 22, 26, 0.95)', 
+          borderRadius: '16px', 
+          padding: '24px', 
+          marginTop: '24px',
+          boxShadow: '0 20px 40px rgba(0,0,0,0.6)', 
+          border: '1px solid rgba(212, 175, 55, 0.2)',
+          backdropFilter: 'blur(8px)'
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #2e2e33', paddingBottom: '16px', marginBottom: '20px' }}>
+            <h3 style={{ margin: 0, color: '#ffffff', fontSize: '18px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+              🗺️ Imágenes de Ubicación: <span style={goldenBadgeStyle}>{selectedTenantForImages.name}</span>
+            </h3>
+            <button 
+              onClick={() => { setSelectedTenantForImages(null); setImageFeedback(''); }} 
+              style={{ background: '#f87171', color: '#0c0c0e', border: 'none', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontWeight: '700' }}
+            >
+              Cerrar Panel
+            </button>
+          </div>
+
+          {/* Botones de pestañas internas */}
+          <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
+            <button
+              onClick={() => setActiveImageTab('upload')}
+              className={activeImageTab === 'upload' ? 'btn-gold' : 'btn-dark-outline'}
+            >
+              ➕ Subir Nuevas
+            </button>
+            <button
+              onClick={() => {
+                setActiveImageTab('list');
+                fetchExistingImages(selectedTenantForImages.id);
+              }}
+              className={activeImageTab === 'list' ? 'btn-gold' : 'btn-dark-outline'}
+            >
+              👁️ Ver y Asociar a Puntos ({existingImages.length})
+            </button>
+          </div>
+
+          {activeImageTab === 'upload' ? (
+            <form onSubmit={(e) => {
+              e.preventDefault();
+              if (!validateImageFiles(imageFiles)) return;
+              uploadImagesMutation.mutate({
+                tenantId: selectedTenantForImages.id,
+                files: imageFiles!,
+                description: 'Plano o imagen operativa'
+              });
+            }} style={{ maxWidth: '500px' }}>
+              
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', color: 'rgba(212, 175, 55, 0.9)', textTransform: 'uppercase', marginBottom: '6px' }}>
+                  Seleccionar Archivos (JPG, PNG, WEBP - Max 5MB)
+                </label>
+                <input 
+                  type="file" 
+                  multiple 
+                  accept="image/jpeg,image/png,image/webp"
+                  onChange={handleImageChange} 
+                  className="custom-input"
+                  style={{ padding: '8px' }}
+                />
+              </div>
+
+              {imageFeedback && (
+                <p style={{ color: imageFeedback.includes('éxito') ? '#34d399' : '#f87171', fontSize: '13px', marginBottom: '12px' }}>
+                  {imageFeedback}
+                </p>
+              )}
+
+              <button 
+                type="submit" 
+                disabled={uploadImagesMutation.isPending || !imageFiles}
+                className="btn-gold"
+                style={{ width: '100%' }}
+              >
+                {uploadImagesMutation.isPending ? 'Subiendo a Cloudinary...' : 'Guardar y Subir Imágenes'}
+              </button>
+            </form>
+          ) : (
+            /* SECCIÓN DE VISUALIZACIÓN Y ASOCIACIÓN */
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '16px' }}>
+            {existingImages.map((img) => (
+              <div key={img.id} style={{ background: '#121214', border: '1px solid #2e2e33', borderRadius: '12px', padding: '12px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                
+                {/* IMAGEN: Al dar clic se abre en tamaño real */}
+                <img 
+                  src={img.imageUrl} 
+                  alt="Ubicación" 
+                  onClick={() => setPreviewImage(img.imageUrl)}
+                  style={{ 
+                    width: '100%', 
+                    height: '180px', 
+                    objectFit: 'contain', // Mantiene la proporción original sin recortar
+                    background: '#0c0c0e', 
+                    borderRadius: '8px', 
+                    border: '1px solid #2e2e33',
+                    cursor: 'pointer'
+                  }} 
+                  title="Haz clic para ver en tamaño completo"
+                />
+                
+                <div>
+                  <label style={{ display: 'block', fontSize: '11px', color: '#D4AF37', fontWeight: 'bold', marginBottom: '4px', textTransform: 'uppercase' }}>
+                    Asociar a Punto de Control:
+                  </label>
+                  
+                  <select
+                    defaultValue={img.checkpointId || ''}
+                    disabled={assignImageMutation.isPending}
+                    onChange={(e) => {
+                      const newCheckpointId = e.target.value;
+                      const currentCheckpointId = img.checkpointId || '';
+
+                      if (newCheckpointId === currentCheckpointId) return;
+
+                      assignImageMutation.mutate({
+                        imageId: img.id,
+                        checkpointId: newCheckpointId,
+                      });
+                    }}
+                    style={{ 
+                      width: '100%', 
+                      background: '#1c1c1f', 
+                      color: '#fff', 
+                      border: '1px solid #2e2e33', 
+                      padding: '8px', 
+                      borderRadius: '6px', 
+                      fontSize: '13px',
+                      opacity: assignImageMutation.isPending ? 0.6 : 1,
+                      cursor: assignImageMutation.isPending ? 'not-allowed' : 'pointer'
+                    }}
+                  >
+                    <option value="">-- Sin asignar (Plano general) --</option>
+                    {safeControlPoints.map((cp) => (
+                      <option key={cp.id} value={cp.id}>
+                        #{cp.sequenceOrder} - {cp.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            ))}
+          </div>
+             
+          )}
+        </div>
+      )}
+
+      {/* 📍 SECCIÓN: CONFIGURACIÓN DE CÓDIGOS QR */}
       {selectedTenantForPoints && (
         <div style={{ 
           background: 'rgba(22, 22, 26, 0.95)', 
           borderRadius: '16px', 
           padding: '24px', 
+          marginTop: '24px',
           boxShadow: '0 20px 40px rgba(0,0,0,0.6)', 
           border: '1px solid rgba(212, 175, 55, 0.2)',
           backdropFilter: 'blur(8px)'
@@ -363,7 +715,7 @@ export default function TenantsManagement() {
               📍 Configuración de Códigos QR: <span style={goldenBadgeStyle}>{selectedTenantForPoints.name}</span>
             </h3>
             <button 
-              onClick={() => setSelectedTenantForPoints(null)} 
+              onClick={() => { setSelectedTenantForPoints(null); setPointError(''); setPointFeedback(''); }} 
               style={{ background: '#f87171', color: '#0c0c0e', border: 'none', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontWeight: '700' }}
             >
               Cerrar Panel
@@ -371,7 +723,6 @@ export default function TenantsManagement() {
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 2fr', gap: '24px' }}>
-            {/* Formulario Lateral */}
             <div style={{ background: '#121214', padding: '20px', borderRadius: '12px', border: '1px solid #2e2e33' }}>
               <h4 style={{ margin: '0 0 16px 0', color: '#D4AF37', fontSize: '14px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '1px' }}>Registrar Nuevo Punto</h4>
               <form onSubmit={handleAddPointSubmit}>
@@ -381,15 +732,18 @@ export default function TenantsManagement() {
                   </label>
                   <input 
                     type="text" 
-                    required 
                     value={newPointName} 
-                    onChange={(e) => setNewPointName(e.target.value)} 
+                    onChange={(e) => {
+                      setNewPointName(e.target.value);
+                      if (pointError) setPointError('');
+                    }} 
                     placeholder="Ej: Acceso Vehicular Sótano 1" 
-                    className="custom-input"
+                    className={`custom-input ${pointError ? 'is-invalid' : ''}`}
                   />
+                  {pointError && <span className="error-msg">{pointError}</span>}
                 </div>
                 <div style={{ marginBottom: '16px', fontSize: '13px', color: '#a3a3a3' }}>
-                  Siguiente orden de escaneo sugerido: <strong style={{ color: '#D4AF37' }}>#{safeControlPoints.length + 1}</strong>
+                  Siguiente orden sugerido: <strong style={{ color: '#D4AF37' }}>#{safeControlPoints.length + 1}</strong>
                 </div>
 
                 {pointFeedback && <p style={{ color: '#f87171', fontSize: '13px', marginBottom: '12px' }}>{pointFeedback}</p>}
@@ -405,13 +759,12 @@ export default function TenantsManagement() {
               </form>
             </div>
 
-            {/* Listado de Puntos con su QR */}
             <div>
               <h4 style={{ margin: '0 0 16px 0', color: 'rgba(212, 175, 55, 0.9)', fontSize: '14px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '1px' }}>Puntos Físicos e Impresión de QR</h4>
               {isLoadingPoints ? (
                 <p style={{ color: '#a3a3a3' }}>Cargando puntos de control...</p>
               ) : safeControlPoints.length === 0 ? (
-                <p style={{ color: '#a3a3a3', fontStyle: 'italic' }}>Aún no has creado puntos de control para este conjunto residencial.</p>
+                <p style={{ color: '#a3a3a3', fontStyle: 'italic' }}>Aún no has creado puntos de control para este conjunto.</p>
               ) : (
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
                   {safeControlPoints.map((point) => {
@@ -423,12 +776,10 @@ export default function TenantsManagement() {
                           Punto #{point.sequenceOrder}
                         </span>
                         
-                        {/* Nombre del Punto */}
                         <strong style={{ ...goldenBadgeStyle, fontSize: '13px', textAlign: 'center', marginBottom: '14px', width: '90%', display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                           {point.name}
                         </strong>
                         
-                        {/* Contenedor blanco para lectura del scanner */}
                         <div style={{ background: '#ffffff', padding: '8px', borderRadius: '8px', display: 'inline-block', boxShadow: '0 4px 12px rgba(0,0,0,0.5)' }}>
                           <img 
                             src={qrUrl} 
@@ -436,295 +787,12 @@ export default function TenantsManagement() {
                             style={{ width: '130px', height: '130px', display: 'block' }} 
                           />
                         </div>
-                        
-                        <span style={{ fontSize: '10px', color: '#5a4b22', marginTop: '10px', fontFamily: 'monospace' }}>
-                          {point.qrCodeToken.substring(0, 16)}...
-                        </span>
-                        
-                        <button 
-                          onClick={() => {
-                            const win = window.open();
-                            if (win) {
-                              // 1. Definimos la URL del logo de la empresa (Usa la misma ruta/importación que en el Login)
-                              const logoUrl = logoDuxs; 
-
-                              win.document.write(`
-                                <!DOCTYPE html>
-                                <html>
-                                  <head>
-                                    <title>QR - ${point.name}</title>
-                                    <style>
-                                      /* Estilo general para visualización en pantalla (Premium Dark) */
-                                      body {
-                                        background-color: #0c0c0e;
-                                        color: #ffffff;
-                                        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-                                        margin: 0;
-                                        padding: 40px 20px;
-                                        display: flex;
-                                        justify-content: center;
-                                        align-items: center;
-                                        min-height: 100vh;
-                                        box-sizing: border-box;
-                                      }
-
-                                      .print-card {
-                                        background: #121214;
-                                        border: 2px solid #D4AF37;
-                                        border-radius: 20px;
-                                        padding: 40px;
-                                        max-width: 450px;
-                                        width: 100%;
-                                        text-align: center;
-                                        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5), 0 0 40px rgba(212, 175, 55, 0.05);
-                                        box-sizing: border-box;
-                                      }
-
-                                      .logo-container {
-                                        display: flex;
-                                        justify-content: center;
-                                        margin-bottom: 50px;
-                                      }
-
-                                      .logo-img {
-                                        max-width: 1300px;
-                                        height: 300px;
-                                        object-fit: contain;
-                                      }
-
-                                      .badge-point {
-                                        display: inline-block;
-                                        background: rgba(212, 175, 55, 0.12);
-                                        color: #D4AF37;
-                                        border: 1px solid rgba(212, 175, 55, 0.4);
-                                        padding: 6px 14px;
-                                        border-radius: 30px;
-                                        font-size: 12px;
-                                        font-weight: bold;
-                                        letter-spacing: 1px;
-                                        text-transform: uppercase;
-                                        margin-bottom: 20px;
-                                      }
-
-                                      h1 {
-                                        font-size: 24px;
-                                        margin: 0 0 8px 0;
-                                        color: #ffffff;
-                                        font-weight: 700;
-                                      }
-
-                                      h3 {
-                                        font-size: 14px;
-                                        color: #a3a3a3;
-                                        margin: 0 0 24px 0;
-                                        text-transform: uppercase;
-                                        letter-spacing: 1.5px;
-                                      }
-
-                                      .qr-container {
-                                        background: #ffffff;
-                                        padding: 16px;
-                                        border-radius: 16px;
-                                        display: inline-block;
-                                        box-shadow: 0 8px 24px rgba(0,0,0,0.3);
-                                        margin-bottom: 24px;
-                                        border: 1px solid rgba(212, 175, 55, 0.2);
-                                      }
-
-                                      .qr-img {
-                                        width: 220px;
-                                        height: 220px;
-                                        display: block;
-                                      }
-
-                                      .instruction {
-                                        font-size: 13px;
-                                        color: #a3a3a3;
-                                        line-height: 1.5;
-                                        margin: 0;
-                                      }
-
-                                      .footer-token {
-                                        font-family: monospace;
-                                        font-size: 10px;
-                                        color: #5a4b22;
-                                        margin-top: 15px;
-                                        word-break: break-all;
-                                      }
-
-                                      /* 🖨️ REGLAS DE OPTIMIZACIÓN PARA IMPRESIÓN (Ahorro de tinta y legibilidad) */
-                                      @media print {
-                                        body {
-                                          background: #ffffff;
-                                          color: #000000;
-                                          padding: 0;
-                                        }
-                                        .print-card {
-                                          background: #ffffff;
-                                          border: 1px solid #000000;
-                                          box-shadow: none;
-                                          padding: 20px;
-                                          max-width: 100%;
-                                        }
-                                        h1 {
-                                          color: #000000;
-                                        }
-                                        h3, .instruction {
-                                          color: #4b5563;
-                                        }
-                                        .badge-point {
-                                          background: #f3f4f6;
-                                          color: #000000;
-                                          border-color: #000000;
-                                        }
-                                        .qr-container {
-                                          box-shadow: none;
-                                          border: 1px solid #e5e7eb;
-                                        }
-                                        .footer-token {
-                                          color: #9ca3af;
-                                        }
-                                      }
-                                    </style>
-                                  </head>
-                                  <body>
-                                    <div class="print-card">
-                                      <div class="logo-container">
-                                        <img class="logo-img" src="${logoUrl}" alt="Logo Empresa" onerror="this.style.display='none';" />
-                                      </div>
-
-                                      <span class="badge-point">Punto de Control #${point.sequenceOrder}</span>
-
-                                      <h1>${point.name}</h1>
-                                      <h3>${selectedTenantForPoints?.name}</h3>
-
-                                      <div class="qr-container">
-                                        <img class="qr-img" src="${qrUrl}" alt="QR ${point.name}" />
-                                      </div>
-
-                                      <p class="instruction">
-                                        Escanee este código únicamente desde la app de portería autorizada para registrar su ronda de seguridad.
-                                      </p>
-                                      
-                                      <div class="footer-token">
-                                        ID: ${point.qrCodeToken}
-                                      </div>
-                                    </div>
-
-                                    <script>
-                                      // Ejecuta el comando de impresión una vez los recursos (incluyendo el logo y el QR) estén cargados
-                                      window.onload = function() {
-                                        window.print();
-                                      };
-                                    </script>
-                                  </body>
-                                </html>
-                              `);
-                              win.document.close();
-                            } else {
-                              alert("Habilita las ventanas emergentes en tu navegador para imprimir.");
-                            }
-                          }}
-                          className="btn-dark-outline"
-                          style={{ marginTop: '14px', width: '100%' }}
-                        >
-                          🖨️ Imprimir QR
-                        </button>
                       </div>
                     );
                   })}
                 </div>
               )}
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL FORMULARIO DE CREACIÓN */}
-      {isModalOpen && (
-        <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(12, 12, 14, 0.85)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000, padding: '20px', backdropFilter: 'blur(8px)' }}>
-          <div style={{ background: 'rgba(22, 22, 26, 0.98)', borderRadius: '16px', width: '100%', maxWidth: '650px', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.7)', border: '1px solid rgba(212, 175, 55, 0.25)' }}>
-            
-            <div style={{ padding: '20px', borderBottom: '1px solid #2e2e33', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h3 style={{ margin: 0, fontSize: '20px', color: '#ffffff', fontWeight: '700' }}>Registrar Nuevo Conjunto Residencial</h3>
-              <button onClick={() => setIsModalOpen(false)} style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer', color: '#a3a3a3' }}>✕</button>
-            </div>
-
-            <form onSubmit={handleSubmit} style={{ padding: '20px' }}>
-              
-              <h4 style={{ margin: '0 0 12px 0', color: '#D4AF37', fontSize: '13px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '1px', borderBottom: '1px solid #2e2e33', paddingBottom: '6px' }}>🏢 Datos e Infraestructura</h4>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '20px' }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', color: 'rgba(212, 175, 55, 0.9)', textTransform: 'uppercase', marginBottom: '4px' }}>Nombre</label>
-                  <input type="text" name="name" required value={formData.name} onChange={handleChange} className="custom-input" placeholder="Ej: Altos del Limonar" />
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', color: 'rgba(212, 175, 55, 0.9)', textTransform: 'uppercase', marginBottom: '4px' }}>Slug URL (Único)</label>
-                  <input type="text" name="slug" required value={formData.slug} onChange={handleChange} className="custom-input" placeholder="Ej: limonar" />
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', color: 'rgba(212, 175, 55, 0.9)', textTransform: 'uppercase', marginBottom: '4px' }}>Total Unidades/Aptos</label>
-                  <input type="number" name="totalUnits" required value={formData.totalUnits} onChange={handleChange} className="custom-input" placeholder="Ej: 160" />
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', color: 'rgba(212, 175, 55, 0.9)', textTransform: 'uppercase', marginBottom: '4px' }}>Total Parqueaderos</label>
-                  <input type="number" name="totalParkingSlots" required value={formData.totalParkingSlots} onChange={handleChange} className="custom-input" placeholder="Ej: 90" />
-                </div>
-              </div>
-
-              <h4 style={{ margin: '16px 0 12px 0', color: '#D4AF37', fontSize: '13px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '1px', borderBottom: '1px solid #2e2e33', paddingBottom: '6px' }}>📞 Datos de la Administración</h4>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '20px' }}>
-                <div style={{ gridColumn: 'span 2' }}>
-                  <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', color: 'rgba(212, 175, 55, 0.9)', textTransform: 'uppercase', marginBottom: '4px' }}>Nombre Completo Admin</label>
-                  <input type="text" name="adminName" required value={formData.adminName} onChange={handleChange} className="custom-input" />
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', color: 'rgba(212, 175, 55, 0.9)', textTransform: 'uppercase', marginBottom: '4px' }}>Email Admin</label>
-                  <input type="email" name="adminEmail" required value={formData.adminEmail} onChange={handleChange} className="custom-input" />
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', color: 'rgba(212, 175, 55, 0.9)', textTransform: 'uppercase', marginBottom: '4px' }}>Teléfono Admin</label>
-                  <input type="text" name="adminPhone" required value={formData.adminPhone} onChange={handleChange} className="custom-input" />
-                </div>
-              </div>
-
-              <h4 style={{ margin: '16px 0 12px 0', color: '#fbbf24', fontSize: '13px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '1px', borderBottom: '1px solid rgba(212, 175, 55, 0.2)', paddingBottom: '6px' }}>🚨 Configuración Inicial de Rondas</h4>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '20px', background: 'rgba(212, 175, 55, 0.05)', padding: '16px', borderRadius: '8px', border: '1px solid rgba(212, 175, 55, 0.15)' }}>
-                <div style={{ gridColumn: 'span 2' }}>
-                  <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', color: '#D4AF37', textTransform: 'uppercase', marginBottom: '4px' }}>Cantidad de puntos de la ronda (Marcaciones)</label>
-                  <input type="number" name="totalRoundPoints" required value={formData.totalRoundPoints} onChange={handleChange} className="custom-input" style={{ borderColor: 'rgba(212, 175, 55, 0.3) !important' }} />
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', color: '#D4AF37', textTransform: 'uppercase', marginBottom: '4px' }}>Minutos por punto de marcado</label>
-                  <input type="number" name="timePerPoint" required value={formData.timePerPoint} onChange={handleChange} className="custom-input" style={{ borderColor: 'rgba(212, 175, 55, 0.3) !important' }} />
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', color: '#D4AF37', textTransform: 'uppercase', marginBottom: '4px' }}>Minutos de descanso entre rondas</label>
-                  <input type="number" name="timeBetweenPoints" required value={formData.timeBetweenPoints} onChange={handleChange} className="custom-input" style={{ borderColor: 'rgba(212, 175, 55, 0.3) !important' }} />
-                </div>
-                <div style={{ gridColumn: 'span 2' }}>
-                  <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', color: '#D4AF37', textTransform: 'uppercase', marginBottom: '4px' }}>Horario Control Vehicular Obligatorio</label>
-                  <input type="text" name="vehicleControlSchedule" required value={formData.vehicleControlSchedule} onChange={handleChange} className="custom-input" style={{ borderColor: 'rgba(212, 175, 55, 0.3) !important' }} />
-                </div>
-              </div>
-
-              <div style={{ marginBottom: '24px' }}>
-                <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', color: 'rgba(212, 175, 55, 0.9)', textTransform: 'uppercase', marginBottom: '4px' }}>Normas Internas / Reglamento (Opcional)</label>
-                <textarea name="rulesText" value={formData.rulesText} onChange={handleChange} rows={3} className="custom-input" style={{ resize: 'vertical' }} placeholder="Reglas básicas de convivencia o control..." />
-              </div>
-
-              {feedback && <p style={{ color: '#f87171', fontSize: '14px', marginBottom: '16px', fontWeight: '500' }}>{feedback}</p>}
-
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', paddingTop: '16px', borderTop: '1px solid #2e2e33' }}>
-                <button type="button" onClick={() => setIsModalOpen(false)} style={{ background: '#2e2e33', color: '#a3a3a3', padding: '10px 18px', borderRadius: '8px', border: 'none', fontWeight: 'bold', cursor: 'pointer' }}>
-                  Cancelar
-                </button>
-                <button type="submit" disabled={createMutation.isPending} className="btn-gold" style={{ padding: '10px 22px' }}>
-                  {createMutation.isPending ? 'Guardando...' : 'Guardar Conjunto'}
-                </button>
-              </div>
-
-            </form>
           </div>
         </div>
       )}

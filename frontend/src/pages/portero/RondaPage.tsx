@@ -10,6 +10,13 @@ interface ControlPoint {
   sequenceOrder: number;
 }
 
+interface LocationImage {
+  id: string;
+  imageUrl: string;
+  description?: string;
+  checkpointId?: string | null;
+}
+
 interface Check {
   id: string;
   scannedAt: string;
@@ -30,6 +37,11 @@ export default function RondaDashboard() {
 
   const [activeRound, setActiveRound] = useState<ActiveRound | null>(null);
   const [controlPoints, setControlPoints] = useState<ControlPoint[]>([]);
+  const [tenantImages, setTenantImages] = useState<LocationImage[]>([]);
+  
+  // 📍 Estado para controlar qué punto fue cliqueado para ver sus imágenes
+  const [selectedPointForModal, setSelectedPointForModal] = useState<ControlPoint | null>(null);
+
   const [remainingTime, setRemainingTime] = useState<number | null>(null);
   
   const [abandonNotes, setAbandonNotes] = useState('');
@@ -39,6 +51,7 @@ export default function RondaDashboard() {
   const [isScanning, setIsScanning] = useState(false);
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
 
+  // 1. Cargar Puntos de Control
   const fetchControlPoints = async () => {
     if (!tenantId) return;
     try {
@@ -47,6 +60,17 @@ export default function RondaDashboard() {
       setControlPoints(sortedPoints);
     } catch (error) {
       console.error("Error al cargar los puntos de control:", error);
+    }
+  };
+
+  // 2. Cargar Imágenes del Tenant asociadas a los Checkpoints
+  const fetchTenantImages = async () => {
+    if (!tenantId) return;
+    try {
+      const { data } = await axios.get(`/api/tenants/${tenantId}/location-images`);
+      setTenantImages(data || []);
+    } catch (error) {
+      console.error("Error al obtener las imágenes del tenant:", error);
     }
   };
 
@@ -83,6 +107,7 @@ export default function RondaDashboard() {
     if (tenantId) {
       checkActiveRound(true);
       fetchControlPoints();
+      fetchTenantImages();
     } else if (user === null || user === undefined) {
       const timer = setTimeout(() => setIsLoading(false), 500); 
       return () => clearTimeout(timer);
@@ -217,7 +242,6 @@ export default function RondaDashboard() {
     return activeRound.checks.some(check => check.controlPoint?.id === pointId);
   };
 
-  // Función auxiliar para contar las visitas de un punto externo en general (o filtrando checks actuales)
   const getExternalPointVisits = (pointId: string) => {
     if (!activeRound || !activeRound.checks) return 0;
     return activeRound.checks.filter(c => c.controlPoint?.id === pointId).length;
@@ -245,6 +269,11 @@ export default function RondaDashboard() {
       return !name.includes('MASTER') && !name.includes('EXTERNO');
     }
   ).length || 0;
+
+  // 🖼️ Filtrar la lista completa de imágenes asociadas al punto seleccionado
+  const imagesForSelectedPoint = selectedPointForModal
+    ? tenantImages.filter(img => img.checkpointId === selectedPointForModal.id)
+    : [];
 
   return (
     <div style={{ maxWidth: '500px', margin: '20px auto', padding: '16px', fontFamily: 'sans-serif' }}>
@@ -360,34 +389,51 @@ export default function RondaDashboard() {
       {controlPoints.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
           
+          {/* PUNTOS NORMALES */}
           <div style={{ background: '#fff', borderRadius: '12px', padding: '20px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)', border: '1px solid #cbd5e1' }}>
             <h3 style={{ color: '#1e293b', margin: '0 0 16px 0', fontSize: '16px' }}>🗺️ Ruta de Patrullaje (Secuencial)</h3>
             
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
               {normalPoints.map((point, index) => {
                 const completado = isPointScanned(point.id);
+                const pointImages = tenantImages.filter(img => img.checkpointId === point.id);
+                const hasImages = pointImages.length > 0;
+
                 return (
-                  <div key={point.id} style={{ 
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    padding: '12px', 
-                    borderRadius: '8px', 
-                    background: completado ? '#f0fdf4' : '#f8fafc',
-                    border: `1px solid ${completado ? '#bbf7d0' : '#e2e8f0'}`
-                  }}>
+                  <div 
+                    key={point.id} 
+                    onClick={() => setSelectedPointForModal(point)}
+                    style={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      padding: '12px', 
+                      borderRadius: '8px', 
+                      background: completado ? '#f0fdf4' : '#f8fafc',
+                      border: `1px solid ${completado ? '#bbf7d0' : '#e2e8f0'}`,
+                      cursor: 'pointer',
+                      transition: 'transform 0.1s ease',
+                    }}
+                  >
                     <div style={{ 
                       width: '24px', height: '24px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', marginRight: '12px', fontSize: '12px',
                       background: completado ? '#22c55e' : '#cbd5e1', color: '#fff', fontWeight: 'bold'
                     }}>
                       {completado ? '✓' : index + 1}
                     </div>
+
                     <span style={{ 
                       color: completado ? '#166534' : '#334155', 
                       fontWeight: completado ? 'bold' : 'normal',
                       flex: 1
                     }}>
                       {point.name}
+                      {hasImages && (
+                        <span style={{ marginLeft: '6px', fontSize: '12px', background: '#e2e8f0', padding: '2px 6px', borderRadius: '10px' }}>
+                          📷 {pointImages.length}
+                        </span>
+                      )}
                     </span>
+
                     <span style={{ fontSize: '12px', fontWeight: '600', color: completado ? '#15803d' : '#64748b' }}>
                       {completado ? 'Completado' : 'Pendiente'}
                     </span>
@@ -397,26 +443,35 @@ export default function RondaDashboard() {
             </div>
           </div>
 
+          {/* PUNTOS MASTER */}
           {masterPoints.length > 0 && (
             <div style={{ background: '#fff', borderRadius: '12px', padding: '20px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)', border: '1px solid #d946ef' }}>
               <h3 style={{ color: '#86198f', margin: '0 0 8px 0', fontSize: '16px' }}>⭐ Punto Master (Comodín)</h3>
               <p style={{ fontSize: '13px', color: '#701a75', marginTop: 0, marginBottom: '12px' }}>
-                Disponible para escanearse de forma independiente en cualquier momento, respetando el intervalo de tiempo por punto.
+                Disponible para escanearse de forma independiente en cualquier momento.
               </p>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 {masterPoints.map((point) => {
                   const completado = isPointScanned(point.id);
+                  const pointImages = tenantImages.filter(img => img.checkpointId === point.id);
+                  const hasImages = pointImages.length > 0;
+
                   return (
-                    <div key={point.id} style={{ 
-                      display: 'flex', 
-                      alignItems: 'center', 
-                      justifyContent: 'space-between',
-                      padding: '12px 16px', 
-                      borderRadius: '8px', 
-                      background: '#fdf4ff',
-                      border: '1px dashed #d946ef'
-                    }}>
+                    <div 
+                      key={point.id} 
+                      onClick={() => setSelectedPointForModal(point)}
+                      style={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        justifyContent: 'space-between',
+                        padding: '12px 16px', 
+                        borderRadius: '8px', 
+                        background: '#fdf4ff',
+                        border: '1px dashed #d946ef',
+                        cursor: 'pointer'
+                      }}
+                    >
                       <div style={{ display: 'flex', alignItems: 'center' }}>
                         <div style={{ 
                           width: '28px', height: '28px', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center', marginRight: '12px', fontSize: '14px',
@@ -426,6 +481,11 @@ export default function RondaDashboard() {
                         </div>
                         <span style={{ color: '#86198f', fontWeight: 'bold', fontSize: '14px' }}>
                           {point.name}
+                          {hasImages && (
+                            <span style={{ marginLeft: '6px', fontSize: '12px', background: '#f5d0fe', padding: '2px 6px', borderRadius: '10px' }}>
+                              📷 {pointImages.length}
+                            </span>
+                          )}
                         </span>
                       </div>
                       <span style={{ fontSize: '11px', background: '#fae8ff', color: '#a21caf', padding: '4px 8px', borderRadius: '4px', fontWeight: '600' }}>
@@ -438,29 +498,36 @@ export default function RondaDashboard() {
             </div>
           )}
 
-          {/* Listado de Puntos Externos (Máximo 2 visitas al día) */}
+          {/* PUNTOS EXTERNOS */}
           {externalPoints.length > 0 && (
             <div style={{ background: '#fff', borderRadius: '12px', padding: '20px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)', border: '1px solid #38bdf8' }}>
               <h3 style={{ color: '#0369a1', margin: '0 0 8px 0', fontSize: '16px' }}>🌐 Puntos Externos (2 veces al día)</h3>
               <p style={{ fontSize: '13px', color: '#0284c7', marginTop: 0, marginBottom: '12px' }}>
-                Estos puntos se escanean de forma independiente a la ronda. Debes completarlos un máximo de 2 veces al día.
+                Debes completarlos un máximo de 2 veces al día.
               </p>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 {externalPoints.map((point) => {
                   const visitsCount = getExternalPointVisits(point.id);
                   const isCompletedLimit = visitsCount >= 2;
+                  const pointImages = tenantImages.filter(img => img.checkpointId === point.id);
+                  const hasImages = pointImages.length > 0;
 
                   return (
-                    <div key={point.id} style={{ 
-                      display: 'flex', 
-                      alignItems: 'center', 
-                      justifyContent: 'space-between',
-                      padding: '12px 16px', 
-                      borderRadius: '8px', 
-                      background: isCompletedLimit ? '#f0fdf4' : '#f0f9ff',
-                      border: `1px dashed ${isCompletedLimit ? '#22c55e' : '#38bdf8'}`
-                    }}>
+                    <div 
+                      key={point.id} 
+                      onClick={() => setSelectedPointForModal(point)}
+                      style={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        justifyContent: 'space-between',
+                        padding: '12px 16px', 
+                        borderRadius: '8px', 
+                        background: isCompletedLimit ? '#f0fdf4' : '#f0f9ff',
+                        border: `1px dashed ${isCompletedLimit ? '#22c55e' : '#38bdf8'}`,
+                        cursor: 'pointer'
+                      }}
+                    >
                       <div style={{ display: 'flex', alignItems: 'center' }}>
                         <div style={{ 
                           width: '28px', height: '28px', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center', marginRight: '12px', fontSize: '14px',
@@ -470,6 +537,11 @@ export default function RondaDashboard() {
                         </div>
                         <span style={{ color: isCompletedLimit ? '#166534' : '#0369a1', fontWeight: 'bold', fontSize: '14px' }}>
                           {point.name}
+                          {hasImages && (
+                            <span style={{ marginLeft: '6px', fontSize: '12px', background: '#bae6fd', padding: '2px 6px', borderRadius: '10px' }}>
+                              📷 {pointImages.length}
+                            </span>
+                          )}
                         </span>
                       </div>
                       <span style={{ 
@@ -489,6 +561,99 @@ export default function RondaDashboard() {
             </div>
           )}
 
+        </div>
+      )}
+
+      {/* 🖼️ MODAL / VISOR DE IMÁGENES DEL PUNTO SELECCIONADO */}
+      {selectedPointForModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(15, 23, 42, 0.75)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 1000,
+          padding: '16px'
+        }}>
+          <div style={{
+            background: '#fff',
+            borderRadius: '12px',
+            maxWidth: '450px',
+            width: '100%',
+            maxHeight: '85vh',
+            overflowY: 'auto',
+            padding: '20px',
+            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.2)'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', borderBottom: '1px solid #e2e8f0', paddingBottom: '12px' }}>
+              <h3 style={{ margin: 0, color: '#0f172a', fontSize: '18px' }}>
+                📍 {selectedPointForModal.name}
+              </h3>
+              <button 
+                onClick={() => setSelectedPointForModal(null)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  fontSize: '20px',
+                  fontWeight: 'bold',
+                  cursor: 'pointer',
+                  color: '#64748b'
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {imagesForSelectedPoint.length > 0 ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                <p style={{ fontSize: '13px', color: '#64748b', margin: 0 }}>
+                  Imágenes de referencia asignadas a este punto ({imagesForSelectedPoint.length}):
+                </p>
+                {imagesForSelectedPoint.map((img) => (
+                  <div key={img.id} style={{ border: '1px solid #e2e8f0', borderRadius: '8px', overflow: 'hidden', background: '#f8fafc' }}>
+                    <img 
+                      src={img.imageUrl} 
+                      alt={img.description || 'Punto de control'} 
+                      style={{ width: '100%', height: 'auto', display: 'block', maxHeight: 'none', objectFit: 'contain' }} 
+                    />
+                    {img.description && (
+                      <p style={{ padding: '8px 12px', margin: 0, fontSize: '13px', color: '#334155' }}>
+                        {img.description}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div style={{ textAlign: 'center', padding: '24px 0', color: '#64748b' }}>
+                <p style={{ fontSize: '32px', margin: '0 0 8px 0' }}>📷</p>
+                <p style={{ margin: 0, fontSize: '14px', fontWeight: '500' }}>
+                  No hay imágenes de referencia asociadas a este punto.
+                </p>
+              </div>
+            )}
+
+            <button
+              onClick={() => setSelectedPointForModal(null)}
+              style={{
+                marginTop: '20px',
+                width: '100%',
+                padding: '10px',
+                background: '#3b82f6',
+                color: '#fff',
+                border: 'none',
+                borderRadius: '8px',
+                fontWeight: 'bold',
+                cursor: 'pointer'
+              }}
+            >
+              Cerrar
+            </button>
+          </div>
         </div>
       )}
 

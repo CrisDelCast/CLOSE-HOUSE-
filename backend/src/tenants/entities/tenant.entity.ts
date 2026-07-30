@@ -12,6 +12,7 @@ import { User } from '../../users/entities/user.entity';
 import { Visitor } from '../../visitors/entities/visitor.entity';
 import { TenantRoundConfig } from './tenant-round-config.entity';// Asegúrate de crear este archivo al lado
 import { ExamQuestion } from '../../exams/entities/exam-question.entity';
+import { TenantLocationImage } from './tenant-location-image.entity';
 
 @Entity({ name: 'tenants' })
 export class Tenant {
@@ -80,4 +81,7 @@ export class Tenant {
 
   @OneToMany(() => ExamQuestion, (question) => question.tenant)
   examQuestions?: ExamQuestion[];
+
+  @OneToMany(() => TenantLocationImage, (image) => image.tenant, { cascade: true, eager: false })
+  locationImages: TenantLocationImage[];
 }

@@ -13,6 +13,7 @@ import RondaDashboard from './pages/portero/RondaPage';
 import PuertaDashboard from './pages/portero/PuertaPage';
 import PorteroLayout from './layouts/Portero';
 import RoundsAuditPage from './pages/superadmin/RoundsAuditPage';
+import MinutaPage from './pages/portero/MinutaPage';
 
 const RootRedirect = () => {
   const { user } = useAuthContext();
@@ -75,6 +76,8 @@ function App() {
           <Route element={<PorteroLayout />}>
             <Route path="rounds" element={<RondaDashboard />} />
             <Route path="gate" element={<PuertaDashboard />} />
+            <Route path="minuta" element={<MinutaPage />} />
+
           </Route>
         </Route>
 

@@ -1,8 +1,11 @@
 {
   "dependencies": {
-    "exceljs": "^4.4.0"
+    "cloudinary": "^2.10.0",
+    "exceljs": "^4.4.0",
+    "multer": "^2.2.0"
   },
   "devDependencies": {
-    "@types/multer": "^2.2.0"
+    "@types/multer": "^2.2.0",
+    "@types/streamifier": "^0.1.2"
   }
 }
