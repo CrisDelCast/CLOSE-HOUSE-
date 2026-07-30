@@ -1,47 +1,36 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { VehicleStatusReport } from './entities/vehicle-status-report.entity';
-import { CreateVehicleReportDto } from './dto/create-vehicle-report.dto';
+import { GeneralReport } from './entities/general-report.entity';
+import { CreateGeneralReportDto } from './dto/create-general-report.dto';
 import { CloudinaryService } from '../common/services/cloudinary.service';
-import { Vehicle } from '../properties/entities/vehicle.entity';
 
 @Injectable()
-export class VehicleReportsService {
-  private readonly logger = new Logger(VehicleReportsService.name);
+export class GeneralReportsService {
+  private readonly logger = new Logger(GeneralReportsService.name);
 
   constructor(
-    @InjectRepository(VehicleStatusReport)
-    private readonly reportRepo: Repository<VehicleStatusReport>,
-    @InjectRepository(Vehicle)
-    private readonly vehicleRepo: Repository<Vehicle>,
+    @InjectRepository(GeneralReport)
+    private readonly reportRepo: Repository<GeneralReport>,
     private readonly cloudinaryService: CloudinaryService,
   ) {}
 
   async create(
     tenantId: string,
     userId: string,
-    dto: CreateVehicleReportDto,
+    dto: CreateGeneralReportDto,
     file?: Express.Multer.File,
   ) {
-    const vehicle = await this.vehicleRepo.findOne({
-      where: { id: dto.vehicleId, tenantId },
-    });
-
-    if (!vehicle) {
-      throw new NotFoundException('Vehículo no encontrado en este conjunto.');
-    }
-
     const warnings: string[] = [];
     let imageUrl = dto.imageUrl;
 
     if (file) {
       if (!this.cloudinaryService.isConfigured()) {
-        this.logger.warn('Cloudinary no configurado: reporte guardado sin imagen.');
+        this.logger.warn('Cloudinary no configurado: minuta general guardada sin imagen.');
         warnings.push('El servicio de imágenes no está configurado. El reporte se guardó sin foto.');
       } else {
         try {
-          imageUrl = await this.cloudinaryService.uploadImage(file);
+          imageUrl = await this.cloudinaryService.uploadImage(file, 'general-reports');
         } catch (error) {
           this.logger.error('Error al subir imagen a Cloudinary', error);
           warnings.push('No se pudo subir la imagen. El reporte se guardó sin foto.');
@@ -52,11 +41,9 @@ export class VehicleReportsService {
     const report = this.reportRepo.create({
       tenantId,
       userId,
-      vehicleId: dto.vehicleId,
-      status: dto.status,
-      observations: dto.observations,
+      reportType: dto.reportType,
+      description: dto.description.trim(),
       imageUrl,
-      checklist: dto.checklist,
     });
 
     const savedReport = await this.reportRepo.save(report);
@@ -69,9 +56,9 @@ export class VehicleReportsService {
   }
 
   async findAllByTenant(tenantId: string) {
-    return await this.reportRepo.find({
+    return this.reportRepo.find({
       where: { tenantId },
-      relations: ['vehicle', 'user'],
+      relations: ['user'],
       order: { createdAt: 'DESC' },
     });
   }

@@ -1,8 +1,9 @@
-import { Controller, Post, Get, Body, Param, ParseUUIDPipe } from '@nestjs/common';
+import { Controller, Post, Get, Body, Param, ParseUUIDPipe, UseGuards, Req } from '@nestjs/common';
 import { PropertiesService } from './properties.service';
 import { CreateApartmentDto } from './dto/create-apartment.dto';
 import { CreateParkingSpotDto } from './dto/create-parking-spot.dto';
 import { CreateVehicleDto } from './dto/create-vehicle.dto';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
 @Controller('properties')
 export class PropertiesController {
@@ -45,8 +46,15 @@ export class PropertiesController {
     return this.propertiesService.createVehicle(createVehicleDto);
   }
 
+  // En tu controlador correspondiente (ej. PropertiesController o VehicleController)
   @Get('vehicles/plate/:plate')
-  async getVehicleByPlate(@Param('plate') plate: string) {
-    return this.propertiesService.findVehicleByPlate(plate);
+  @UseGuards(JwtAuthGuard)
+  async findByPlate(@Req() req: any, @Param('plate') plate: string) {
+    const tenantId = req.user?.tenantId || req.headers['x-tenant-id'];
+    return await this.propertiesService.findOneByPlateAndTenant(plate, tenantId);
   }
+
+
+
+  
 }

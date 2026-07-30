@@ -13,6 +13,7 @@ import { ExamsModule } from './exams/exams.module';
 import { RoundsModule } from './rounds/rounds.module';
 import { PropertiesModule } from './properties/properties.module';
 import { VehicleReportsModule } from './reports/vehicle-reports.module';
+import { GeneralReportsModule } from './reports/general-reports.module';
 
 @Module({
   imports: [
@@ -26,7 +27,8 @@ import { VehicleReportsModule } from './reports/vehicle-reports.module';
     ExamsModule,
     RoundsModule,
     PropertiesModule,
-    VehicleReportsModule
+    VehicleReportsModule,
+    GeneralReportsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

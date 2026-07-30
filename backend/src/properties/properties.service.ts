@@ -110,4 +110,29 @@ export class PropertiesService {
     }
     return vehicle;
   }
+
+  // ==========================================
+  // 🔍 BÚSQUEDA SEGURA DE VEHÍCULOS POR TENANT
+  // ==========================================
+
+  async findOneByPlateAndTenant(plate: string, tenantId: string): Promise<Vehicle> {
+    const formattedPlate = plate.toUpperCase().trim();
+
+    const vehicle = await this.vehicleRepo.findOne({
+      where: [
+        { plate: formattedPlate, tenantId },
+        {
+          plate: formattedPlate,
+          parkingSpot: { apartment: { tenantId } },
+        },
+      ],
+      relations: ['parkingSpot', 'parkingSpot.apartment'],
+    });
+
+    if (!vehicle) {
+      throw new NotFoundException(`Vehículo con placa ${formattedPlate} no encontrado en este conjunto.`);
+    }
+
+    return vehicle;
+  }
 }

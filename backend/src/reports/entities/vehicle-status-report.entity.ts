@@ -10,6 +10,27 @@ export enum VehicleReportStatus {
   NOVEDAD = 'NOVEDAD',
 }
 
+// Opciones de estado para cada elemento del checklist
+export enum ChecklistItemStatus {
+  BIEN = 'bien',
+  REGULAR = 'regular',
+  MAL = 'mal',
+}
+
+// Estructura de cada parte dentro del JSON
+export interface ChecklistPartDetail {
+  status: ChecklistItemStatus;
+  observations?: string;
+}
+
+export interface VehicleChecklist {
+  vidrios?: ChecklistPartDetail;
+  carroceria?: ChecklistPartDetail;
+  luces?: ChecklistPartDetail;
+  llantas?: ChecklistPartDetail;
+  espejos?: ChecklistPartDetail;
+}
+
 @Entity('vehicle_status_reports')
 export class VehicleStatusReport {
   @PrimaryGeneratedColumn('uuid')
@@ -44,6 +65,10 @@ export class VehicleStatusReport {
 
   @Column({ name: 'image_url', type: 'varchar', nullable: true })
   imageUrl: string;
+
+  // 🛠️ Nuevo campo para almacenar el checklist en formato JSON
+  @Column({ type: 'jsonb', nullable: true })
+  checklist: VehicleChecklist;
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;

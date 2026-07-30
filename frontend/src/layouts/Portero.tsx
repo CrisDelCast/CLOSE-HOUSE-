@@ -236,6 +236,12 @@ const PorteroLayout = () => {
         >
           <span>📋</span> Minuta vehiculos
         </NavLink>
+        <NavLink 
+          to="/minuta-general" 
+          className={({ isActive }) => `nav-link ${isActive ? 'nav-link-active' : ''}`}
+        >
+          <span>📝</span> Minuta general
+        </NavLink>
       </nav>
 
       {/* AQUÍ SE RENDERIZAN LAS SUBPÁGINAS (Heredan el fondo oscuro) */}

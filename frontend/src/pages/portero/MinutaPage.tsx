@@ -1,26 +1,59 @@
-import { useState } from 'react';
+// 📄 src/pages/minuta/MinutaPage.tsx
+import { useState, useEffect, useCallback } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from '../../api/axios';
+import { fetchVehicleReports, type VehicleReport } from '../../api/vehicle-reports';
 
 interface VehicleInfo {
   apartmentNumber?: string;
   owners?: string[];
-  vehicleId?: string; // Guardamos el ID real (UUID) del vehículo
+  vehicleId?: string;
 }
+
+// Tipado para los estados de cada parte del checklist
+type ChecklistStatus = 'bien' | 'regular' | 'mal';
+
+interface ChecklistItemState {
+  status: ChecklistStatus;
+  observations: string;
+}
+
+const VEHICLE_PARTS = [
+  { key: 'vidrios', label: '🪟 Vidrios' },
+  { key: 'carroceria', label: '🚗 Carrocería' },
+  { key: 'luces', label: '💡 Luces' },
+  { key: 'llantas', label: '🛞 Llantas' },
+  { key: 'espejos', label: '🪞 Espejos' },
+] as const;
+
+const createInitialForm = () => ({
+  plate: '',
+  vehicleId: '',
+  status: 'BIEN',
+  observations: '',
+  checklist: {
+    vidrios: { status: 'bien' as ChecklistStatus, observations: '' },
+    carroceria: { status: 'bien' as ChecklistStatus, observations: '' },
+    luces: { status: 'bien' as ChecklistStatus, observations: '' },
+    llantas: { status: 'bien' as ChecklistStatus, observations: '' },
+    espejos: { status: 'bien' as ChecklistStatus, observations: '' },
+  },
+});
+
+const CHECKLIST_LABELS: Record<string, string> = {
+  vidrios: 'Vidrios',
+  carroceria: 'Carrocería',
+  luces: 'Luces',
+  llantas: 'Llantas',
+  espejos: 'Espejos',
+};
 
 const MinutaPage = () => {
   const navigate = useNavigate();
   
-  // Estados para el formulario ajustados al DTO del backend
-  const [form, setForm] = useState({
-    plate: '',
-    vehicleId: '', // Campo requerido por el backend (UUID)
-    status: 'BIEN', // Ajustado a los valores del enum: BIEN, REGULAR, MAL, NOVEDAD
-    observations: '',
-  });
+  const [form, setForm] = useState(createInitialForm);
 
-  // Datos visuales obtenidos al buscar la placa
   const [vehicleDetails, setVehicleDetails] = useState<VehicleInfo | null>(null);
   const [isSearchingPlate, setIsSearchingPlate] = useState(false);
 
@@ -31,12 +64,55 @@ const MinutaPage = () => {
   const [successMessage, setSuccessMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  const [reports, setReports] = useState<VehicleReport[]>([]);
+  const [isLoadingReports, setIsLoadingReports] = useState(true);
+  const [expandedReportId, setExpandedReportId] = useState<string | null>(null);
+
+  const loadReports = useCallback(async () => {
+    try {
+      setIsLoadingReports(true);
+      const data = await fetchVehicleReports();
+      setReports(data);
+    } catch {
+      setReports([]);
+    } finally {
+      setIsLoadingReports(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadReports();
+  }, [loadReports]);
+
+  const resetForm = () => {
+    if (imagePreview) {
+      URL.revokeObjectURL(imagePreview);
+    }
+    setForm(createInitialForm());
+    setVehicleDetails(null);
+    setImageFile(null);
+    setImagePreview(null);
+  };
+
   const handleChange = (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = event.target;
     setForm((prev) => ({ ...prev, [name]: value }));
   };
 
-  // 🔍 Función para buscar la placa y capturar el ID (UUID) del vehículo
+  // Manejador específico para actualizar el checklist de cada parte
+  const handleChecklistChange = (partKey: string, field: 'status' | 'observations', value: string) => {
+    setForm((prev) => ({
+      ...prev,
+      checklist: {
+        ...prev.checklist,
+        [partKey]: {
+          ...(prev.checklist as any)[partKey],
+          [field]: value,
+        },
+      },
+    }));
+  };
+
   const handlePlateBlur = async () => {
     const cleanPlate = form.plate.trim();
     if (!cleanPlate || cleanPlate.length < 3) return;
@@ -49,7 +125,6 @@ const MinutaPage = () => {
       const { data } = await axios.get(`/api/properties/vehicles/plate/${encodeURIComponent(cleanPlate.toUpperCase())}`);
       
       if (data && data.id) {
-        // Extraemos el apartamento y el parqueadero de la estructura anidada
         const apt = data.parkingSpot?.apartment;
         const parkingNumber = data.parkingSpot?.number;
 
@@ -57,7 +132,6 @@ const MinutaPage = () => {
           ? `${apt.block ? `${apt.block} - ` : ''}Apto ${apt.number}` 
           : 'No asignado';
 
-        // Guardamos el ID (UUID) en el estado del formulario para enviarlo al backend
         setForm(prev => ({ ...prev, vehicleId: data.id }));
 
         setVehicleDetails({
@@ -91,44 +165,52 @@ const MinutaPage = () => {
     event.preventDefault();
     setError('');
     setSuccessMessage('');
-
-    // Validación previa para asegurar que se seleccionó un vehículo válido del sistema
+  
     if (!form.vehicleId) {
       setError('Debe ingresar una placa válida y esperar a que el sistema la identifique.');
       return;
     }
-
+  
     setIsSubmitting(true);
   
     try {
       const formData = new FormData();
-      // Enviamos las propiedades exactas que exige el backend
       formData.append('vehicleId', form.vehicleId);
       formData.append('status', form.status);
       formData.append('observations', form.observations);
       
+      // 🛠️ AQUÍ ESTÁ LA CLAVE: Debe ir envuelto en JSON.stringify()
+      formData.append('checklist', JSON.stringify(form.checklist));
+      
       if (imageFile) {
         formData.append('image', imageFile);
       }
- 
-      // 🛠️ Se añadió el header multipart/form-data para que Axios envíe correctamente el archivo binario
-      await axios.post('/api/vehicle-reports', formData, {
+  
+      const { data } = await axios.post('/api/vehicle-reports', formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
       });
- 
-      setSuccessMessage('¡Reporte vehicular registrado exitosamente en la minuta!');
-      setForm({ plate: '', vehicleId: '', status: 'BIEN', observations: '' });
-      setVehicleDetails(null);
-      setImageFile(null);
-      setImagePreview(null);
+  
+      resetForm();
+      await loadReports();
+
+      const warnings = Array.isArray(data?.warnings) ? data.warnings.join(' ') : '';
+      setSuccessMessage(
+        warnings
+          ? `Reporte registrado. ${warnings}`
+          : '¡Reporte vehicular y checklist registrados exitosamente!',
+      );
     } catch (err: any) {
-      setError(err.response?.data?.message || 'No fue posible guardar el reporte vehicular.');
+      const responseData = err.response?.data;
+      const message = Array.isArray(responseData?.message)
+        ? responseData.message.join(', ')
+        : responseData?.message || 'No fue posible guardar el reporte vehicular.';
+      setError(message);
     } finally {
       setIsSubmitting(false);
     }
-  };
+  };  
 
   return (
     <div className="minuta-container" style={{
@@ -155,7 +237,7 @@ const MinutaPage = () => {
       <style>{`
         .minuta-card {
           width: 100%;
-          max-width: 550px;
+          max-width: 600px;
           background: rgba(22, 22, 26, 0.95);
           border: 1px solid rgba(212, 175, 55, 0.25);
           border-radius: 16px;
@@ -219,7 +301,34 @@ const MinutaPage = () => {
 
         textarea.minuta-input {
           resize: vertical;
-          min-height: 100px;
+          min-height: 80px;
+        }
+
+        .checklist-container {
+          background: rgba(18, 18, 20, 0.9);
+          border: 1px solid rgba(212, 175, 55, 0.2);
+          border-radius: 12px;
+          padding: 16px;
+          margin-bottom: 20px;
+        }
+
+        .checklist-item {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+          padding: 12px 0;
+          border-bottom: 1px solid #2e2e33;
+        }
+
+        .checklist-item:last-child {
+          border-bottom: none;
+        }
+
+        .checklist-row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
         }
 
         .vehicle-info-box {
@@ -320,10 +429,67 @@ const MinutaPage = () => {
           border-color: #D4AF37;
           color: #ffffff;
         }
+
+        .history-card {
+          width: 100%;
+          max-width: 600px;
+          background: rgba(22, 22, 26, 0.95);
+          border: 1px solid rgba(212, 175, 55, 0.25);
+          border-radius: 16px;
+          padding: 24px;
+          box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+          box-sizing: border-box;
+          margin-top: 24px;
+          margin-bottom: 40px;
+        }
+
+        .history-title {
+          color: #ffffff;
+          font-size: 18px;
+          font-weight: 700;
+          margin: 0 0 16px 0;
+        }
+
+        .history-item {
+          border: 1px solid #2e2e33;
+          border-radius: 10px;
+          margin-bottom: 10px;
+          overflow: hidden;
+        }
+
+        .history-item-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 10px;
+          padding: 12px 14px;
+          background: rgba(18, 18, 20, 0.8);
+          cursor: pointer;
+        }
+
+        .history-item-body {
+          padding: 12px 14px;
+          border-top: 1px solid #2e2e33;
+          font-size: 12px;
+          color: #d4d4d4;
+        }
+
+        .status-badge {
+          font-size: 10px;
+          font-weight: 700;
+          padding: 4px 8px;
+          border-radius: 6px;
+          text-transform: uppercase;
+        }
+
+        .status-bien { background: rgba(74, 222, 128, 0.15); color: #4ade80; }
+        .status-regular { background: rgba(250, 204, 21, 0.15); color: #facc15; }
+        .status-mal { background: rgba(248, 113, 113, 0.15); color: #f87171; }
+        .status-novedad { background: rgba(96, 165, 250, 0.15); color: #60a5fa; }
       `}</style>
 
       {/* BOTÓN DE RETORNO */}
-      <div style={{ width: '100%', maxWidth: '550px' }}>
+      <div style={{ width: '100%', maxWidth: '600px' }}>
         <button onClick={() => navigate(-1)} className="back-btn">
           ← Volver
         </button>
@@ -332,7 +498,7 @@ const MinutaPage = () => {
       {/* FORMULARIO DE MINUTA VEHICULAR */}
       <form className="minuta-card" onSubmit={handleSubmit}>
         <h2 className="minuta-title">MINUTA DE VEHÍCULOS</h2>
-        <p className="minuta-subtitle">Control e ingreso vehicular en portería</p>
+        <p className="minuta-subtitle">Control e inspección de partes en portería</p>
 
         {/* INPUT: PLACA CON BÚSQUEDA */}
         <div className="input-group">
@@ -358,9 +524,9 @@ const MinutaPage = () => {
           </div>
         )}
 
-        {/* SELECT: ESTADO DEL REPORTE (ENUM REQUERIDO) */}
+        {/* SELECT: ESTADO GENERAL DEL REPORTE */}
         <div className="input-group">
-          <label className="input-label">Estado del Vehículo</label>
+          <label className="input-label">Estado General del Vehículo</label>
           <select
             className="minuta-input"
             name="status"
@@ -374,13 +540,49 @@ const MinutaPage = () => {
           </select>
         </div>
 
-        {/* TEXTAREA: OBSERVACIONES */}
+        {/* 📋 CHECKLIST PREDEFINIDO */}
         <div className="input-group">
-          <label className="input-label">Observaciones</label>
+          <label className="input-label">Checklist de Inspección (Partes del Vehículo)</label>
+          <div className="checklist-container">
+            {VEHICLE_PARTS.map((part) => {
+              const partData = (form.checklist as any)[part.key];
+              return (
+                <div key={part.key} className="checklist-item">
+                  <div className="checklist-row">
+                    <span style={{ color: '#ffffff', fontSize: '13px', fontWeight: '600', minWidth: '110px' }}>
+                      {part.label}
+                    </span>
+                    <select
+                      className="minuta-input"
+                      style={{ padding: '8px', fontSize: '12px' }}
+                      value={partData.status}
+                      onChange={(e) => handleChecklistChange(part.key, 'status', e.target.value)}
+                    >
+                      <option value="bien">Bien</option>
+                      <option value="regular">Regular</option>
+                      <option value="mal">Mal</option>
+                    </select>
+                  </div>
+                  <input
+                    className="minuta-input"
+                    style={{ padding: '8px', fontSize: '12px' }}
+                    placeholder={`Observación para ${part.label.toLowerCase()} (opcional)`}
+                    value={partData.observations}
+                    onChange={(e) => handleChecklistChange(part.key, 'observations', e.target.value)}
+                  />
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* TEXTAREA: OBSERVACIONES GENERALES */}
+        <div className="input-group">
+          <label className="input-label">Observaciones Generales</label>
           <textarea
             className="minuta-input"
             name="observations"
-            placeholder="Detalles adicionales sobre el estado o novedad del vehículo..."
+            placeholder="Detalles adicionales generales sobre el vehículo..."
             value={form.observations}
             onChange={handleChange}
           />
@@ -422,6 +624,78 @@ const MinutaPage = () => {
           {isSubmitting ? 'Guardando registro...' : 'Registrar Minuta Vehicular'}
         </button>
       </form>
+
+      {/* HISTORIAL DE MINUTAS */}
+      <section className="history-card">
+        <h3 className="history-title">Registros recientes</h3>
+
+        {isLoadingReports && (
+          <p style={{ color: '#a3a3a3', fontSize: '13px', textAlign: 'center' }}>Cargando historial...</p>
+        )}
+
+        {!isLoadingReports && reports.length === 0 && (
+          <p style={{ color: '#a3a3a3', fontSize: '13px', textAlign: 'center' }}>No hay minutas registradas aún.</p>
+        )}
+
+        {!isLoadingReports && reports.map((report) => {
+          const isExpanded = expandedReportId === report.id;
+          const statusClass = `status-badge status-${report.status.toLowerCase()}`;
+
+          return (
+            <div key={report.id} className="history-item">
+              <div
+                className="history-item-header"
+                onClick={() => setExpandedReportId(isExpanded ? null : report.id)}
+              >
+                <div>
+                  <div style={{ color: '#fff', fontWeight: 600, fontSize: '13px' }}>
+                    {report.vehicle?.plate || 'Sin placa'} · {new Date(report.createdAt).toLocaleString()}
+                  </div>
+                  <div style={{ color: '#a3a3a3', fontSize: '11px', marginTop: '4px' }}>
+                    {report.user?.fullName || 'Portero'} · {report.vehicle?.brand || 'N/A'} ({report.vehicle?.color || 'N/A'})
+                  </div>
+                </div>
+                <span className={statusClass}>{report.status}</span>
+              </div>
+
+              {isExpanded && (
+                <div className="history-item-body">
+                  {report.observations && (
+                    <p><strong>Observaciones:</strong> {report.observations}</p>
+                  )}
+
+                  {report.checklist && (
+                    <div style={{ marginTop: '8px' }}>
+                      <strong>Checklist:</strong>
+                      <ul style={{ margin: '6px 0 0 0', paddingLeft: '18px' }}>
+                        {Object.entries(report.checklist).map(([key, detail]) => (
+                          <li key={key}>
+                            {CHECKLIST_LABELS[key] || key}: {detail?.status}
+                            {detail?.observations ? ` — ${detail.observations}` : ''}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {report.imageUrl && (
+                    <div style={{ marginTop: '10px' }}>
+                      <strong>Evidencia:</strong>
+                      <div style={{ marginTop: '6px' }}>
+                        <img
+                          src={report.imageUrl}
+                          alt="Evidencia del reporte"
+                          style={{ maxWidth: '100%', maxHeight: '180px', borderRadius: '8px', border: '1px solid #2e2e33' }}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </section>
     </div>
   );
 };

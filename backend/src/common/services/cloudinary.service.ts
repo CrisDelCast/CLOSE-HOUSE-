@@ -13,10 +13,21 @@ export class CloudinaryService {
     });
   }
 
-  async uploadImage(file: Express.Multer.File): Promise<string> {
+  isConfigured(): boolean {
+    return Boolean(
+      process.env.CLOUDINARY_CLOUD_NAME &&
+        process.env.CLOUDINARY_API_KEY &&
+        process.env.CLOUDINARY_API_SECRET,
+    );
+  }
+
+  async uploadImage(file: Express.Multer.File, folder = 'vehicle-reports'): Promise<string> {
+    if (!this.isConfigured()) {
+      throw new Error('Cloudinary no está configurado.');
+    }
     return new Promise((resolve, reject) => {
       const uploadStream = cloudinary.uploader.upload_stream(
-        { folder: 'vehicle-reports' },
+        { folder },
         (error, result) => {
           if (error) return reject(error);
           resolve(result.secure_url);
