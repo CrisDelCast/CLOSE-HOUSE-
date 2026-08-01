@@ -12,6 +12,13 @@ interface VisitNotificationPayload {
   email?: string;
 }
 
+interface SendEmailOptions {
+  to: string;
+  subject: string;
+  text: string;
+  html?: string;
+}
+
 @Injectable()
 export class NotificationsService {
   private readonly logger = new Logger(NotificationsService.name);
@@ -64,28 +71,27 @@ export class NotificationsService {
       return;
     }
 
-    // 🛡️ Validamos que 'notes' tenga un valor de tipo texto antes de usar .trim()
     const notesSection = notes && notes.trim() 
       ? `\n\nReporte del guardia:\n"${notes}"` 
       : '\n\nNo se ingresó ningún reporte u observación por parte del guardia.';
 
-      const correoFijo = 'Duxsbusiness2024@gmail.com';
-      const subject = '⚠️ Alerta: Ronda de seguridad abandonada o expirada';
-      const text = `Hola, te informamos que la ronda de seguridad con ID ${roundId} ha superado el tiempo límite permitido sin completarse y ha sido marcada por como abandonada en el sistema.${notesSection}`;
-      
-      // 1. Enviar al correo del guarda
-      await this.sendEmail({
-        to: email,
-        subject,
-        text,
-      });
-      
-      // 2. Enviar al correo fijo de supervisión
-      await this.sendEmail({
-        to: correoFijo,
-        subject,
-        text,
-      });
+    const correoFijo = 'Duxsbusiness2024@gmail.com';
+    const subject = '⚠️ Alerta: Ronda de seguridad abandonada o expirada';
+    const text = `Hola, te informamos que la ronda de seguridad con ID ${roundId} ha superado el tiempo límite permitido sin completarse y ha sido marcada por como abandonada en el sistema.${notesSection}`;
+    
+    // 1. Enviar al correo del guarda
+    await this.sendEmail({
+      to: email,
+      subject,
+      text,
+    });
+    
+    // 2. Enviar al correo fijo de supervisión
+    await this.sendEmail({
+      to: correoFijo,
+      subject,
+      text,
+    });
   } 
 
   async notifyVisitArrival(payload: VisitNotificationPayload) {
@@ -111,6 +117,29 @@ export class NotificationsService {
       this.logger.warn(
         'No se envió correo de visita: no hay email destino (resident.email o SMTP_DEFAULT_TO).',
       );
+    }
+  }
+
+  async notifyApartmentResidents(
+    residents: { email: string; fullName: string }[], 
+    subject: string, 
+    text: string,
+    htmlContent?: string, 
+    isHtml?: boolean      
+  ) {
+    for (const resident of residents) {
+      if (resident.email) {
+        const safeText = text && text !== 'undefined' 
+          ? `Hola ${resident.fullName},\n\n${text}` 
+          : `Hola ${resident.fullName},\n\nHas recibido una notificación importante en el sistema de portería. Por favor revisa tu correo en formato HTML.`;
+
+        await this.sendEmail({
+          to: resident.email,
+          subject,
+          text: safeText,
+          html: isHtml && htmlContent ? htmlContent : undefined,
+        });
+      }
     }
   }
 
@@ -164,11 +193,8 @@ export class NotificationsService {
     to,
     subject,
     text,
-  }: {
-    to: string;
-    subject: string;
-    text: string;
-  }): Promise<void> {
+    html,
+  }: SendEmailOptions): Promise<void> {
     if (!this.resend || !this.fromEmail) {
       this.logger.warn(
         `No se envió correo a ${to}: Resend no configurado o falta RESEND_FROM.`,
@@ -176,17 +202,22 @@ export class NotificationsService {
       return;
     }
 
-    this.logger.log(
-      `Intentando enviar correo (Resend): to=${to} from=${this.fromEmail} subject="${subject}"`,
-    );
-
     try {
-      const result = await this.resend.emails.send({
+      const emailPayload: any = {
         from: this.fromEmail,
         to,
         subject,
         text,
-      });
+      };
+
+      if (html) {
+        emailPayload.html = html;
+        this.logger.log(`🟢 [DEBUG] Enviando correo con HTML adjunto para ${to}`);
+      } else {
+        this.logger.log(`🟡 [DEBUG] Enviando correo solo en texto plano para ${to}`);
+      }
+
+      const result = await this.resend.emails.send(emailPayload);
 
       if (result.error) {
         throw new Error(result.error.message);
@@ -199,19 +230,4 @@ export class NotificationsService {
       );
     }
   }
-  async notifyApartmentResidents(residents: { email: string; fullName: string }[], subject: string, text: string) {
-    for (const resident of residents) {
-      if (resident.email) {
-        await this.sendEmail({
-          to: resident.email,
-          subject,
-          text: `Hola ${resident.fullName},\n\n${text}`,
-        });
-      }
-    }
-  }
-
-  
-
- 
 }

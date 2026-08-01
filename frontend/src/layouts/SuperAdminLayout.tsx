@@ -184,7 +184,7 @@ export default function SuperAdminLayout() {
           <span>🏢</span> Gestionar Conjuntos
         </NavLink>
         <NavLink to="/superadmin/settings" className="nav-link">
-          <span>⚙️</span> Configuración
+          <span>⚙️</span> Minutas
         </NavLink>
         <NavLink to="/superadmin/residents" className="nav-link">
           <span>👥</span> Residentes

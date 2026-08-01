@@ -24,6 +24,18 @@ export class VisitorsService {
     private readonly notificationsService: NotificationsService,
   ) {}
 
+  async updateStatus(id: string, status: VisitorStatus) {
+    const visitor = await this.visitorRepository.findOne({ where: { id } });
+    if (!visitor) {
+      throw new NotFoundException('Visitante no encontrado');
+    }
+    visitor.status = status;
+    if (status === VisitorStatus.IN) {
+      visitor.checkInAt = new Date();
+    }
+    return await this.visitorRepository.save(visitor);
+  }
+
   async create(tenantId: string, dto: CreateVisitorDto) {
     const resident = await this.ensureResidentBelongsToTenant(
       dto.residentId,
@@ -47,11 +59,12 @@ export class VisitorsService {
     return savedVisitor;
   }
 
-  findAll(tenantId: string, status?: VisitorStatus) {
+  findAll(tenantId: string, status?: VisitorStatus, residentId?: string) {
     return this.visitorRepository.find({
       where: {
         tenantId,
         ...(status ? { status } : {}),
+        ...(residentId ? { residentId } : {}), // 👈 Añade esta línea para filtrar por residente
       },
       order: { createdAt: 'DESC' },
       relations: { resident: true },

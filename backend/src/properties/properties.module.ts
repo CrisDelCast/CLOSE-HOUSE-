@@ -8,11 +8,12 @@ import { Apartment } from './entities/apartment.entity';
 import { ParkingSpot } from './entities/parking-spot.entity';
 import { Vehicle } from './entities/vehicle.entity';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { Resident } from '../residents/entities/resident.entity';
 
 @Module({
   imports: [
     // 🚀 Registramos las 3 entidades bajo el mismo módulo
-    TypeOrmModule.forFeature([Apartment, ParkingSpot, Vehicle]),NotificationsModule
+    TypeOrmModule.forFeature([Apartment, ParkingSpot, Vehicle,Resident]),NotificationsModule
   ],
   controllers: [PropertiesController],
   providers: [PropertiesService],

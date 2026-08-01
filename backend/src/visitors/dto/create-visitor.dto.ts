@@ -22,6 +22,10 @@ export class CreateVisitorDto {
   @MaxLength(40)
   readonly documentId: string;
 
+  @IsUUID()
+  @IsNotEmpty()
+  readonly apartmentId: string;   
+
   @IsOptional()
   @IsUUID()
   readonly residentId?: string;
@@ -30,6 +34,10 @@ export class CreateVisitorDto {
   @IsString()
   @MaxLength(20)
   readonly phone?: string;
+
+  @IsUUID()
+  @IsNotEmpty()
+  readonly tenantId: string;
 
   @IsOptional()
   @IsString()

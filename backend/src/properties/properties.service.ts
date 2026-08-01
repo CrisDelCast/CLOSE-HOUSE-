@@ -10,6 +10,7 @@ import { CreateApartmentDto } from './dto/create-apartment.dto';
 import { CreateParkingSpotDto } from './dto/create-parking-spot.dto';
 import { CreateVehicleDto } from './dto/create-vehicle.dto';
 import { NotificationsService } from '../notifications/notifications.service';
+import { Resident } from '../residents/entities/resident.entity';
 
 @Injectable()
 export class PropertiesService {
@@ -21,6 +22,8 @@ export class PropertiesService {
     @InjectRepository(Vehicle)
     private readonly vehicleRepo: Repository<Vehicle>,
     private readonly notificationsService: NotificationsService,
+    @InjectRepository(Resident)
+    private readonly residentRepository: Repository<Resident>,
   ) {}
 
   // ==========================================
@@ -162,7 +165,13 @@ export class PropertiesService {
     return apartment;
   }
 
-  async sendInstantAlert(apartmentId: string, subject: string, message: string) {
+  async sendInstantAlert(
+    apartmentId: string, 
+    subject: string, 
+    message: string, 
+    htmlContent?: string, 
+    isHtml?: boolean
+  ) {
     // 1. Buscamos el apartamento y sus residentes usando el repositorio correcto
     const apartment = await this.apartmentRepo.findOne({
       where: { id: apartmentId },
@@ -183,15 +192,29 @@ export class PropertiesService {
       throw new NotFoundException('No hay residentes con correo electrónico válido en este apartamento.');
     }
 
+    // 2. Pasamos los nuevos parámetros opcionales al servicio de notificaciones
     await this.notificationsService.notifyApartmentResidents(
       validResidents,
       subject,
       message,
+      htmlContent,
+      isHtml,
     );
-
 
     return { message: 'Notificación enviada exitosamente a los residentes.' };
   }
+
+  async findResidentsByApartment(apartmentId: string) {
+    return await this.residentRepository.find({
+      where: { 
+        apartment: { 
+          id: apartmentId 
+        } 
+      },
+    });
+  }
+
+ 
 
 
   

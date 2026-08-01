@@ -75,4 +75,32 @@ export class VehicleReportsService {
       order: { createdAt: 'DESC' },
     });
   }
+  async update(tenantId: string, id: string, userId: string, updateDto: CreateVehicleReportDto, file?: Express.Multer.File) {
+    const existingReport = await this.reportRepo.findOne({
+      where: { id, tenantId },
+    });
+
+    if (!existingReport) {
+      throw new NotFoundException(`El reporte vehicular con ID ${id} no fue encontrado.`);
+    }
+
+    let imageUrl = existingReport.imageUrl;
+
+    if (file) {
+      // ☁️ Lógica de subida a Cloudinary para la actualización de la imagen nueva
+      // imageUrl = await this.cloudinaryService.uploadImage(file);
+    }
+
+    // Actualizamos las propiedades del reporte existente
+    existingReport.status = updateDto.status ?? existingReport.status;
+    existingReport.observations = updateDto.observations ?? existingReport.observations;
+    existingReport.checklist = updateDto.checklist ?? existingReport.checklist;
+    existingReport.vehicleId = updateDto.vehicleId ?? existingReport.vehicleId;
+    existingReport.userId = userId; // Actualiza quién realizó la última modificación
+    if (imageUrl) {
+      existingReport.imageUrl = imageUrl;
+    }
+
+    return await this.reportRepo.save(existingReport);
+  }
 }

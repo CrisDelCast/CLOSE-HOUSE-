@@ -62,13 +62,35 @@ export class PropertiesController {
   }
 
   @Post('send-alert')
-  async sendAlert(@Body() body: { apartmentId: string; subject: string; message: string }) {
+  async sendAlert(
+    @Body()
+    body: {
+      apartmentId: string;
+      subject: string;
+      message: string;
+      htmlContent?: string;
+      isHtml?: boolean;
+    },
+  ) {
     return await this.propertiesService.sendInstantAlert(
       body.apartmentId,
       body.subject,
       body.message,
+      body.htmlContent,
+      body.isHtml,
     );
   }
+
+  // ==========================================
+  // 👥 ENDPOINTS DE RESIDENTES POR APARTAMENTO
+  // ==========================================
+
+  @Get('apartments/:apartmentId/residents')
+  @UseGuards(JwtAuthGuard)
+  async getResidentsByApartment(@Param('apartmentId', ParseUUIDPipe) apartmentId: string) {
+    return await this.propertiesService.findResidentsByApartment(apartmentId);
+  }
+
 
 
 

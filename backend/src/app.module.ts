@@ -14,6 +14,7 @@ import { RoundsModule } from './rounds/rounds.module';
 import { PropertiesModule } from './properties/properties.module';
 import { VehicleReportsModule } from './reports/vehicle-reports.module';
 import { GeneralReportsModule } from './reports/general-reports.module';
+import { ContractorsModule } from './visitors/contractors.module';
 
 @Module({
   imports: [
@@ -29,6 +30,7 @@ import { GeneralReportsModule } from './reports/general-reports.module';
     PropertiesModule,
     VehicleReportsModule,
     GeneralReportsModule,
+    ContractorsModule
   ],
   controllers: [AppController],
   providers: [AppService],

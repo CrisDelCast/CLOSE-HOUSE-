@@ -2,8 +2,8 @@ import { useState, useEffect } from 'react';
 import axios from '../../api/axios';
 
 export default function PuertaDashboard() {
-  // Estados para controlar los modales
-  const [activeModal, setActiveModal] = useState<'vehicle' | 'correspondence' | 'contractor' | null>(null);
+  // Estados para controlar los modales (añadido 'visitor')
+  const [activeModal, setActiveModal] = useState<'vehicle' | 'correspondence' | 'contractor' | 'visitor' | null>(null);
 
   // Estados compartidos: Lista de apartamentos del tenant cargados al abrir los modales correspondientes
   const [tenantApartments, setTenantApartments] = useState<any[]>([]);
@@ -34,10 +34,39 @@ export default function PuertaDashboard() {
     time: '',
     apartmentId: '',
     procedureType: 'RECONEXION',
+    status: 'PENDING',
   });
   const [contractorLoading, setContractorLoading] = useState(false);
   const [contractorMessage, setContractorMessage] = useState('');
   const [contractorApartmentFilter, setContractorApartmentFilter] = useState('');
+
+  // Estados para contratistas programados del apartamento seleccionado
+  const [scheduledContractors, setScheduledContractors] = useState<any[]>([]);
+  const [loadingScheduled, setLoadingScheduled] = useState(false);
+
+  // ==========================================
+  // ESTADOS PARA NUEVO MODAL 4: CONTROL DE VISITANTES (PEATONAL)
+  // ==========================================
+  const [visitorForm, setVisitorForm] = useState({
+    fullName: '',
+    documentType: 'Cédula',
+    documentId: '',
+    apartmentId: '',
+    residentId: '',
+    phone: '',
+    vehiclePlate: '',
+    purpose: '',
+    notes: '',
+  });
+  const [visitorLoading, setVisitorLoading] = useState(false);
+  const [visitorMessage, setVisitorMessage] = useState('');
+  const [visitorApartmentFilter, setVisitorApartmentFilter] = useState('');
+  const [apartmentResidents, setApartmentResidents] = useState<any[]>([]);
+  const [loadingResidents, setLoadingResidents] = useState(false);
+  
+  // 👉 Estados nuevos para consultar los visitantes específicos del residente seleccionado de forma dinámica
+  const [residentVisitors, setResidentVisitors] = useState<any[]>([]);
+  const [loadingResidentVisitors, setLoadingResidentVisitors] = useState(false);
 
   // Listas de opciones requeridas
   const PACKAGE_TYPES = [
@@ -49,13 +78,19 @@ export default function PuertaDashboard() {
     'RECONEXION', 'CORTE', 'INSTALACION', 'INSPECCION', 'REPARACION'
   ];
 
+  const STATUS_TYPES = [
+    { label: 'Pendiente', value: 'PENDING' },
+    { label: 'Aprobado', value: 'APPROVED' },
+    { label: 'No Aprobado', value: 'REJECTED' }
+  ];
+
+  const DOCUMENT_TYPES = ['Cédula', 'Pasaporte', 'Cédula Extranjería', 'Tarjeta de Identidad', 'NIT'];
+
   // Función para obtener dinámicamente el tenantId desde el token JWT o localStorage
   const getTenantId = () => {
-    // 1. Intentar buscar en localStorage directamente si tu app lo guarda ahí
     const storedTenantId = localStorage.getItem('tenantId');
     if (storedTenantId) return storedTenantId;
 
-    // 2. Intentar decodificar el token JWT guardado (ej. token, access_token, user)
     const token = localStorage.getItem('token') || localStorage.getItem('access_token');
     if (token) {
       try {
@@ -74,7 +109,6 @@ export default function PuertaDashboard() {
       }
     }
 
-    // 3. Fallback en caso de que guardes el objeto de usuario completo
     try {
       const userStr = localStorage.getItem('user');
       if (userStr) {
@@ -93,7 +127,6 @@ export default function PuertaDashboard() {
     setIsLoadingApartments(true);
     try {
       const tenantId = getTenantId();
-      
       if (!tenantId) {
         console.error('No se encontró el tenantId en la sesión o token.');
         setIsLoadingApartments(false);
@@ -109,12 +142,97 @@ export default function PuertaDashboard() {
     }
   };
 
-  // Cargar apartamentos cuando se abren los modales 2 o 3
+  // Cargar apartamentos cuando se abren los modales correspondientes
   useEffect(() => {
-    if (activeModal === 'correspondence' || activeModal === 'contractor') {
+    if (activeModal === 'correspondence' || activeModal === 'contractor' || activeModal === 'visitor') {
       fetchTenantApartments();
     }
   }, [activeModal]);
+
+  // Función para consultar contratistas del apartamento seleccionado
+  const fetchScheduledContractors = async (apartmentId: string) => {
+    if (!apartmentId) {
+      setScheduledContractors([]);
+      return;
+    }
+
+    setLoadingScheduled(true);
+    try {
+      const response = await axios.get(`/api/contractors-access/apartment/${apartmentId}`);
+      setScheduledContractors(response.data);
+    } catch (err) {
+      console.error('Error al cargar contratistas programados', err);
+      setScheduledContractors([]);
+    } finally {
+      setLoadingScheduled(false);
+    }
+  };
+
+  // Función para cargar los residentes del apartamento seleccionado (para visitantes)
+  const fetchApartmentResidents = async (apartmentId: string) => {
+    if (!apartmentId) {
+      setApartmentResidents([]);
+      return;
+    }
+
+    setLoadingResidents(true);
+    try {
+      const response = await axios.get(`/api/properties/apartments/${apartmentId}/residents`);
+      setApartmentResidents(response.data || []);
+    } catch (err) {
+      console.error('Error al cargar residentes del apartamento', err);
+      setApartmentResidents([]);
+    } finally {
+      setLoadingResidents(false);
+    }
+  };
+
+  // 👉 Función para buscar los visitantes asociados al residente seleccionado
+  const fetchResidentVisitors = async (residentId: string) => {
+    if (!residentId) {
+      setResidentVisitors([]);
+      return;
+    }
+    setLoadingResidentVisitors(true);
+    try {
+      const tenantId = getTenantId();
+  
+      const response = await axios.get(`/api/visitors`, {
+        params: { 
+          residentId 
+        },
+        headers: {
+          'x-tenant-id': tenantId 
+        }
+      });
+      setResidentVisitors(response.data || []);
+    } catch (err) {
+      console.error('Error al cargar los visitantes del residente:', err);
+      setResidentVisitors([]);
+    } finally {
+      setLoadingResidentVisitors(false);
+    }
+  };
+
+  // 👉 Función para marcar la salida (Check-Out) de un visitante
+  const handleCheckOut = async (visitorId: string) => {
+    try {
+      const tenantId = getTenantId();
+      
+      await axios.patch(`/api/visitors/${visitorId}/check-out`, {}, {
+        headers: {
+          'x-tenant-id': tenantId
+        }
+      });
+
+      // Recarga la lista de visitantes del residente actual para reflejar el cambio
+      if (visitorForm.residentId) {
+        fetchResidentVisitors(visitorForm.residentId);
+      }
+    } catch (error) {
+      console.error('Error al registrar la salida del visitante:', error);
+    }
+  };
 
   // ==========================================
   // LÓGICA DE BÚSQUEDA (MODAL 1)
@@ -145,9 +263,6 @@ export default function PuertaDashboard() {
   };
 
   // ==========================================
-  // LÓGICA DE CORRESPONDENCIA (MODAL 2)
-  // ==========================================
-  // ==========================================
   // LÓGICA DE CORRESPONDENCIA / ALERTA (MODAL 2)
   // ==========================================
   const handleCorrespondenceSubmit = async (e: React.FormEvent) => {
@@ -156,10 +271,9 @@ export default function PuertaDashboard() {
     setCorrMessage('');
 
     try {
-      // Llamamos al nuevo endpoint de alerta instantánea sin persistencia
       await axios.post('/api/properties/send-alert', {
         apartmentId: corrForm.apartmentId,
-        subject: `Nuevo paquete recibido: ${corrForm.packageType}`,
+        subject: `📦 Nuevo paquete recibido: ${corrForm.packageType}`,
         message: `Se ha registrado la llegada de un paquete (${corrForm.packageType}) entregado por ${corrForm.provider}. Pase por portería a retirarlo.`,
       });
 
@@ -172,6 +286,7 @@ export default function PuertaDashboard() {
       setCorrLoading(false);
     }
   };
+
   // ==========================================
   // LÓGICA DE CONTRATISTAS (MODAL 3)
   // ==========================================
@@ -179,40 +294,185 @@ export default function PuertaDashboard() {
     e.preventDefault();
     setContractorLoading(true);
     setContractorMessage('');
-
+  
     try {
-      await axios.post('/api/contractors-access', contractorForm);
-      setContractorMessage('¡Acceso de contratista registrado exitosamente!');
-      setContractorForm({
-        company: '',
-        documentNumber: '',
-        fullName: '',
-        time: '',
-        apartmentId: '',
-        procedureType: 'RECONEXION',
+      const responseContractor = await axios.post('/api/contractors-access', contractorForm);
+      const newContractorId = responseContractor.data.id || responseContractor.data._id;
+  
+      const selectedApt = tenantApartments.find(apt => (apt.id || apt._id) === contractorForm.apartmentId);
+      const aptNumberStr = selectedApt ? `Apto ${selectedApt.number}` : 'su apartamento';
+  
+      const isLocalDev = true; 
+      const ngrokUrl = 'https://starlit-handball-chief.ngrok-free.dev'; 
+      const railwayUrl = import.meta.env.VITE_BACKEND_URL || 'https://motivated-kindness-production-e60a.up.railway.app/'; 
+      const backendUrl = isLocalDev ? ngrokUrl : railwayUrl;
+  
+      await axios.post('/api/properties/send-alert', {
+        apartmentId: contractorForm.apartmentId,
+        isHtml: true, 
+        subject: `🛠️ Autorización Requerida: Contratista ${contractorForm.company} (${contractorForm.procedureType})`,
+        message: 'Solicitud de ingreso de contratista pendiente de aprobación.',
+        htmlContent: `
+          <div style="font-family: Arial, sans-serif; padding: 20px; background-color: #f4f4f5; border-radius: 8px; color: #18181b;">
+            <h2 style="color: #27272a; margin-top: 0;">Solicitud de Ingreso a Portería</h2>
+            <p>Se ha registrado una solicitud de acceso para su apartamento <strong>(${aptNumberStr})</strong>:</p>
+            
+            <div style="background: #ffffff; padding: 15px; border-radius: 6px; border: 1px solid #e4e4e7; margin: 15px 0;">
+              <p style="margin: 5px 0;"><strong>Empresa:</strong> ${contractorForm.company}</p>
+              <p style="margin: 5px 0;"><strong>Técnico:</strong> ${contractorForm.fullName}</p>
+              <p style="margin: 5px 0;"><strong>Documento:</strong> ${contractorForm.documentNumber}</p>
+              <p style="margin: 5px 0;"><strong>Procedimiento:</strong> ${contractorForm.procedureType}</p>
+              <p style="margin: 5px 0;"><strong>Hora programada:</strong> ${contractorForm.time}</p>
+            </div>
+  
+            <p style="text-align: center; font-weight: bold; margin: 20px 0 10px 0;">Por favor, seleccione una opción:</p>
+            
+            <div style="text-align: center;">
+              <a href="${backendUrl}/api/contractors-access/respond?id=${newContractorId}&action=APPROVED" 
+                 style="background-color: #16a34a; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block; margin-right: 10px;">
+                ✅ Aprobar Acceso
+              </a>
+              
+              <a href="${backendUrl}/api/contractors-access/respond?id=${newContractorId}&action=REJECTED" 
+                 style="background-color: #dc2626; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">
+                ❌ No Aprobar
+              </a>
+            </div>
+            
+            <p style="font-size: 11px; color: #71717a; text-align: center; margin-top: 25px;">
+              Este es un correo automático generado por el sistema de control de portería.
+            </p>
+          </div>
+        `
       });
-      setContractorApartmentFilter('');
+  
+      setContractorMessage('¡Acceso registrado y correo enviado con éxito!');
     } catch (err: any) {
-      setContractorMessage(err.response?.data?.message || 'Error al registrar el acceso.');
+      setContractorMessage(err.response?.data?.message || 'Error al procesar la solicitud.');
     } finally {
       setContractorLoading(false);
     }
   };
 
-  // Filtrado local de apartamentos para correspondencia
+  // ==========================================
+  // LÓGICA DE VISITANTES / PEATONAL (MODAL 4)
+  // ==========================================
+  const handleVisitorSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setVisitorLoading(true);
+    setVisitorMessage('');
+
+    try {
+      const tenantId = getTenantId();
+
+      const payload: any = {
+        fullName: visitorForm.fullName,
+        documentType: visitorForm.documentType,
+        documentId: visitorForm.documentId,
+        apartmentId: visitorForm.apartmentId,
+        tenantId: tenantId,
+      };
+
+      if (visitorForm.residentId) payload.residentId = visitorForm.residentId;
+      if (visitorForm.phone) payload.phone = visitorForm.phone;
+      if (visitorForm.vehiclePlate) payload.vehiclePlate = visitorForm.vehiclePlate;
+      if (visitorForm.purpose) payload.purpose = visitorForm.purpose;
+      if (visitorForm.notes) payload.notes = visitorForm.notes;
+
+      const responseVisitor = await axios.post('/api/visitors', payload, {
+        headers: {
+          'x-tenant-id': tenantId,
+        },
+      });
+
+      const newVisitorId = responseVisitor.data.id || responseVisitor.data._id;
+
+      const selectedApt = tenantApartments.find(apt => (apt.id || apt._id) === visitorForm.apartmentId);
+      const aptNumberStr = selectedApt ? `Apto ${selectedApt.number}` : 'su apartamento';
+
+      const selectedResident = apartmentResidents.find(res => (res.id || res._id) === visitorForm.residentId);
+      const residentEmail = selectedResident ? selectedResident.email : null;
+
+      const isLocalDev = true; 
+      const ngrokUrl = 'https://starlit-handball-chief.ngrok-free.dev'; 
+      const railwayUrl = import.meta.env.VITE_BACKEND_URL || 'https://motivated-kindness-production-e60a.up.railway.app/'; 
+      const backendUrl = isLocalDev ? ngrokUrl : railwayUrl;
+
+      await axios.post('/api/properties/send-alert', {
+        apartmentId: visitorForm.apartmentId,
+        email: residentEmail,
+        isHtml: true, 
+        subject: `👤 Autorización Requerida: Visitante ${visitorForm.fullName} (${visitorForm.purpose || 'Visita'})`,
+        message: 'Solicitud de ingreso de visitante pendiente de aprobación.',
+        htmlContent: `
+          <div style="font-family: Arial, sans-serif; padding: 20px; background-color: #f4f4f5; border-radius: 8px; color: #18181b;">
+            <h2 style="color: #27272a; margin-top: 0;">Solicitud de Ingreso de Visitante</h2>
+            <p>Se ha registrado un visitante en portería para su apartamento <strong>(${aptNumberStr})</strong>:</p>
+            
+            <div style="background: #ffffff; padding: 15px; border-radius: 6px; border: 1px solid #e4e4e7; margin: 15px 0;">
+              <p style="margin: 5px 0;"><strong>Nombre:</strong> ${visitorForm.fullName}</p>
+              <p style="margin: 5px 0;"><strong>Documento:</strong> ${visitorForm.documentType} - ${visitorForm.documentId}</p>
+              <p style="margin: 5px 0;"><strong>Propósito:</strong> ${visitorForm.purpose || 'No especificado'}</p>
+              <p style="margin: 5px 0;"><strong>Vehículo (Placa):</strong> ${visitorForm.vehiclePlate || 'Ingreso peatonal'}</p>
+            </div>
+  
+            <p style="text-align: center; font-weight: bold; margin: 20px 0 10px 0;">Por favor, seleccione una opción:</p>
+            
+            <div style="text-align: center;">
+              <a href="${backendUrl}/api/visitors/respond?id=${newVisitorId}&action=APPROVED" 
+                 style="background-color: #16a34a; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block; margin-right: 10px;">
+                ✅ Aprobar Acceso
+              </a>
+              
+              <a href="${backendUrl}/api/visitors/respond?id=${newVisitorId}&action=DENIED" 
+                 style="background-color: #dc2626; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">
+                ❌ No Aprobar
+              </a>
+            </div>
+            
+            <p style="font-size: 11px; color: #71717a; text-align: center; margin-top: 25px;">
+              Este es un correo automático generado por el sistema de control de portería.
+            </p>
+          </div>
+        `
+      });
+
+      setVisitorMessage('¡Visitante registrado y notificación enviada al residente con éxito!');
+      setVisitorForm({
+        fullName: '',
+        documentType: 'Cédula',
+        documentId: '',
+        apartmentId: '',
+        residentId: '',
+        phone: '',
+        vehiclePlate: '',
+        purpose: '',
+        notes: '',
+      });
+      setVisitorApartmentFilter('');
+      setApartmentResidents([]);
+      setResidentVisitors([]);
+    } catch (err: any) {
+      setVisitorMessage(err.response?.data?.message || 'Error al registrar el visitante.');
+    } finally {
+      setVisitorLoading(false);
+    }
+  };
+
+  // Filtrado local de apartamentos
   const filteredCorrApartments = tenantApartments.filter((apt: any) => {
     const term = corrApartmentFilter.toLowerCase();
-    const matchNumber = apt.number?.toString().toLowerCase().includes(term);
-    const matchBlock = apt.block?.toString().toLowerCase().includes(term);
-    return matchNumber || matchBlock;
+    return apt.number?.toString().toLowerCase().includes(term) || apt.block?.toString().toLowerCase().includes(term);
   });
 
-  // Filtrado local de apartamentos para contratistas
   const filteredContractorApartments = tenantApartments.filter((apt: any) => {
     const term = contractorApartmentFilter.toLowerCase();
-    const matchNumber = apt.number?.toString().toLowerCase().includes(term);
-    const matchBlock = apt.block?.toString().toLowerCase().includes(term);
-    return matchNumber || matchBlock;
+    return apt.number?.toString().toLowerCase().includes(term) || apt.block?.toString().toLowerCase().includes(term);
+  });
+
+  const filteredVisitorApartments = tenantApartments.filter((apt: any) => {
+    const term = visitorApartmentFilter.toLowerCase();
+    return apt.number?.toString().toLowerCase().includes(term) || apt.block?.toString().toLowerCase().includes(term);
   });
 
   return (
@@ -291,6 +551,10 @@ export default function PuertaDashboard() {
           border-color: #D4AF37 !important;
           box-shadow: 0 0 0 3px rgba(212, 175, 55, 0.15) !important;
         }
+        input[type="time"].minuta-input::-webkit-calendar-picker-indicator {
+          filter: invert(1);
+          cursor: pointer;
+        }
         .input-group {
           display: flex;
           flex-direction: column;
@@ -326,6 +590,20 @@ export default function PuertaDashboard() {
           background: #5a4b22;
           color: #a3a3a3;
           cursor: not-allowed;
+        }
+        .checkout-btn {
+          background: #dc2626;
+          color: #ffffff;
+          border: none;
+          padding: 4px 8px;
+          font-size: 11px;
+          font-weight: bold;
+          border-radius: 4px;
+          cursor: pointer;
+          transition: background 0.2s ease;
+        }
+        .checkout-btn:hover {
+          background: #b91c1c;
         }
         .close-modal-btn {
           background: transparent;
@@ -378,6 +656,15 @@ export default function PuertaDashboard() {
           <h3 style={{ margin: 0, color: '#D4AF37', fontSize: '16px' }}>Control de Acceso Contratistas</h3>
           <p style={{ margin: 0, color: '#a3a3a3', fontSize: '12px' }}>
             Gestiona ingresos de personal externo, empresas y procedimientos.
+          </p>
+        </button>
+
+        {/* BOTÓN 4: CONTROL DE ACCESO PEATONAL (VISITANTES) */}
+        <button className="dashboard-card-btn" onClick={() => setActiveModal('visitor')}>
+          <span style={{ fontSize: '24px' }}>👤</span>
+          <h3 style={{ margin: 0, color: '#D4AF37', fontSize: '16px' }}>Control Acceso Peatonal</h3>
+          <p style={{ margin: 0, color: '#a3a3a3', fontSize: '12px' }}>
+            Registra visitantes, selecciona apartamento y asócialos con el residente.
           </p>
         </button>
 
@@ -519,16 +806,21 @@ export default function PuertaDashboard() {
           <div className="modal-content">
             <button className="close-modal-btn" onClick={() => setActiveModal(null)}>✕ Cerrar</button>
             <h3 style={{ color: '#ffffff', marginTop: 0, marginBottom: '6px' }}>Registro de Correspondencia</h3>
-            <p style={{ color: '#a3a3a3', fontSize: '12px', marginBottom: '20px' }}>Filtra y selecciona el apartamento destino.</p>
+            <p style={{ color: '#a3a3a3', fontSize: '12px', marginBottom: '20px' }}>Filtra y selecciona el apartamento destino para notificar el paquete.</p>
 
-            {/* FILTRADO DE APARTAMENTOS */}
             <div style={{ background: '#121214', border: '1px solid #2e2e33', borderRadius: '8px', padding: '14px', marginBottom: '16px' }}>
               <label className="input-label" style={{ marginBottom: '6px', display: 'block' }}>🔍 Filtrar Apartamentos</label>
               <input
                 className="minuta-input"
                 placeholder="Escribe número de apto o bloque (ej. 302, Torre 1)..."
                 value={corrApartmentFilter}
-                onChange={(e) => setCorrApartmentFilter(e.target.value)}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setCorrApartmentFilter(val);
+                  if (!val) {
+                    setCorrForm(prev => ({ ...prev, apartmentId: '' }));
+                  }
+                }}
               />
 
               <div style={{ marginTop: '10px', maxHeight: '150px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '4px' }}>
@@ -541,7 +833,7 @@ export default function PuertaDashboard() {
                     return (
                       <div
                         key={aptId}
-                        onClick={() => setCorrForm({ ...corrForm, apartmentId: aptId })}
+                        onClick={() => setCorrForm(prev => ({ ...prev, apartmentId: aptId }))}
                         style={{
                           background: isSelected ? 'rgba(212, 175, 55, 0.15)' : '#1a1a1e',
                           border: `1px solid ${isSelected ? '#D4AF37' : '#2e2e33'}`,
@@ -620,7 +912,7 @@ export default function PuertaDashboard() {
       )}
 
       {/* ========================================== */}
-      {/* MODAL 3: CONTROL DE ACCESO CONTRATISTAS    */}
+      {/* MODAL 3: CONTROL DE ACCESO CONTRATISTAS   */}
       {/* ========================================== */}
       {activeModal === 'contractor' && (
         <div className="modal-overlay">
@@ -629,14 +921,20 @@ export default function PuertaDashboard() {
             <h3 style={{ color: '#ffffff', marginTop: 0, marginBottom: '6px' }}>Acceso de Contratistas y Técnicos</h3>
             <p style={{ color: '#a3a3a3', fontSize: '12px', marginBottom: '20px' }}>Filtra y selecciona el apartamento que autoriza.</p>
 
-            {/* FILTRADO DE APARTAMENTOS */}
             <div style={{ background: '#121214', border: '1px solid #2e2e33', borderRadius: '8px', padding: '14px', marginBottom: '16px' }}>
               <label className="input-label" style={{ marginBottom: '6px', display: 'block' }}>🔍 Filtrar Apartamentos</label>
               <input
                 className="minuta-input"
                 placeholder="Escribe número de apto o bloque (ej. 302, Torre 1)..."
                 value={contractorApartmentFilter}
-                onChange={(e) => setContractorApartmentFilter(e.target.value)}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setContractorApartmentFilter(val);
+                  if (!val) {
+                    setContractorForm(prev => ({ ...prev, apartmentId: '' }));
+                    setScheduledContractors([]);
+                  }
+                }}
               />
 
               <div style={{ marginTop: '10px', maxHeight: '150px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '4px' }}>
@@ -649,7 +947,10 @@ export default function PuertaDashboard() {
                     return (
                       <div
                         key={aptId}
-                        onClick={() => setContractorForm({ ...contractorForm, apartmentId: aptId })}
+                        onClick={() => {
+                          setContractorForm(prev => ({ ...prev, apartmentId: aptId }));
+                          fetchScheduledContractors(aptId);
+                        }}
                         style={{
                           background: isSelected ? 'rgba(212, 175, 55, 0.15)' : '#1a1a1e',
                           border: `1px solid ${isSelected ? '#D4AF37' : '#2e2e33'}`,
@@ -676,6 +977,28 @@ export default function PuertaDashboard() {
               </div>
             </div>
 
+            {contractorForm.apartmentId && (
+              <div style={{ background: '#121214', border: '1px solid #2e2e33', borderRadius: '8px', padding: '14px', marginBottom: '16px' }}>
+                <label className="input-label" style={{ marginBottom: '6px', display: 'block' }}>📋 Contratistas Programados / Registrados</label>
+                {loadingScheduled ? (
+                  <p style={{ color: '#a3a3a3', fontSize: '12px', textAlign: 'center', margin: '10px 0' }}>Consultando accesos...</p>
+                ) : scheduledContractors.length > 0 ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '120px', overflowY: 'auto' }}>
+                    {scheduledContractors.map((item: any, idx: number) => (
+                      <div key={idx} style={{ background: '#1a1a1e', padding: '8px', borderRadius: '6px', fontSize: '12px', borderLeft: '3px solid #D4AF37' }}>
+                        <p style={{ margin: 0, fontWeight: 'bold', color: '#ffffff' }}>{item.fullName} ({item.company})</p>
+                        <p style={{ margin: '2px 0 0 0', color: '#a3a3a3' }}>Hora: {item.time || 'N/A'} | Procedimiento: {item.procedureType} | Estado: <strong>{item.status}</strong></p>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p style={{ color: '#737373', fontSize: '12px', textAlign: 'center', margin: '8px 0', fontStyle: 'italic' }}>
+                    No hay registros previos para este apartamento.
+                  </p>
+                )}
+              </div>
+            )}
+
             <form onSubmit={handleContractorSubmit}>
               <div className="input-group">
                 <label className="input-label">Empresa</label>
@@ -689,10 +1012,10 @@ export default function PuertaDashboard() {
               </div>
 
               <div className="input-group">
-                <label className="input-label">Cédula / Documento</label>
+                <label className="input-label">Número de Documento</label>
                 <input
                   className="minuta-input"
-                  placeholder="Número de identificación"
+                  placeholder="Cédula del técnico"
                   value={contractorForm.documentNumber}
                   onChange={(e) => setContractorForm({ ...contractorForm, documentNumber: e.target.value })}
                   required
@@ -703,7 +1026,7 @@ export default function PuertaDashboard() {
                 <label className="input-label">Nombre Completo</label>
                 <input
                   className="minuta-input"
-                  placeholder="Nombre del operario"
+                  placeholder="Nombre del técnico"
                   value={contractorForm.fullName}
                   onChange={(e) => setContractorForm({ ...contractorForm, fullName: e.target.value })}
                   required
@@ -711,7 +1034,7 @@ export default function PuertaDashboard() {
               </div>
 
               <div className="input-group">
-                <label className="input-label">Hora de Ingreso</label>
+                <label className="input-label">Hora Estimada / Programada</label>
                 <input
                   type="time"
                   className="minuta-input"
@@ -722,7 +1045,33 @@ export default function PuertaDashboard() {
               </div>
 
               <div className="input-group">
-                <label className="input-label">Apartamento que Autoriza (ID)</label>
+                <label className="input-label">Tipo de Procedimiento</label>
+                <select
+                  className="minuta-input"
+                  value={contractorForm.procedureType}
+                  onChange={(e) => setContractorForm({ ...contractorForm, procedureType: e.target.value })}
+                >
+                  {PROCEDURE_TYPES.map((proc) => (
+                    <option key={proc} value={proc} style={{ background: '#121214' }}>{proc}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="input-group">
+                <label className="input-label">Estado Inicial del Acceso</label>
+                <select
+                  className="minuta-input"
+                  value={contractorForm.status}
+                  onChange={(e) => setContractorForm({ ...contractorForm, status: e.target.value })}
+                >
+                  {STATUS_TYPES.map((st) => (
+                    <option key={st.value} value={st.value} style={{ background: '#121214' }}>{st.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="input-group">
+                <label className="input-label">Apartamento Seleccionado (ID)</label>
                 <input
                   className="minuta-input"
                   placeholder="Selecciona un apartamento de la lista superior"
@@ -733,19 +1082,6 @@ export default function PuertaDashboard() {
                 />
               </div>
 
-              <div className="input-group">
-                <label className="input-label">Tipo de Procedimiento</label>
-                <select
-                  className="minuta-input"
-                  value={contractorForm.procedureType}
-                  onChange={(e) => setContractorForm({ ...contractorForm, procedureType: e.target.value })}
-                >
-                  {PROCEDURE_TYPES.map((type) => (
-                    <option key={type} value={type} style={{ background: '#121214' }}>{type}</option>
-                  ))}
-                </select>
-              </div>
-
               {contractorMessage && (
                 <p style={{ color: contractorMessage.includes('exitosamente') ? '#4ade80' : '#f87171', fontSize: '12px', textAlign: 'center' }}>
                   {contractorMessage}
@@ -753,7 +1089,248 @@ export default function PuertaDashboard() {
               )}
 
               <button type="submit" className="submit-btn" disabled={contractorLoading || !contractorForm.apartmentId}>
-                {contractorLoading ? 'Guardando...' : 'Registrar Ingreso de Contratista'}
+                {contractorLoading ? 'Registrando y Notificando...' : 'Registrar Acceso y Notificar Residente'}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================== */}
+      {/* MODAL 4: CONTROL DE ACCESO PEATONAL (VISITANTES) */}
+      {/* ========================================== */}
+      {activeModal === 'visitor' && (
+        <div className="modal-overlay">
+          <div className="modal-content">
+            <button className="close-modal-btn" onClick={() => setActiveModal(null)}>✕ Cerrar</button>
+            <h3 style={{ color: '#ffffff', marginTop: 0, marginBottom: '6px' }}>Control de Acceso Peatonal (Visitantes)</h3>
+            <p style={{ color: '#a3a3a3', fontSize: '12px', marginBottom: '20px' }}>Busca el apartamento destino, selecciona el residente anfitrión y registra al visitante.</p>
+
+            {/* FILTRADO DE APARTAMENTOS */}
+            <div style={{ background: '#121214', border: '1px solid #2e2e33', borderRadius: '8px', padding: '14px', marginBottom: '16px' }}>
+              <label className="input-label" style={{ marginBottom: '6px', display: 'block' }}>🔍 Filtrar Apartamento Destino *</label>
+              <input
+                className="minuta-input"
+                placeholder="Escribe número de apto o bloque (ej. 302, Torre 1)..."
+                value={visitorApartmentFilter}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setVisitorApartmentFilter(val);
+                  if (!val) {
+                    setVisitorForm(prev => ({ ...prev, apartmentId: '', residentId: '' }));
+                    setApartmentResidents([]);
+                    setResidentVisitors([]);
+                  }
+                }}
+              />
+
+              <div style={{ marginTop: '10px', maxHeight: '140px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                {isLoadingApartments ? (
+                  <p style={{ color: '#a3a3a3', fontSize: '12px', textAlign: 'center', margin: '10px 0' }}>Cargando apartamentos...</p>
+                ) : filteredVisitorApartments.length > 0 ? (
+                  filteredVisitorApartments.map((apt: any) => {
+                    const aptId = apt.id || apt._id;
+                    const isSelected = visitorForm.apartmentId === aptId;
+                    return (
+                      <div
+                        key={aptId}
+                        onClick={() => {
+                          setVisitorForm(prev => ({ ...prev, apartmentId: aptId, residentId: '' }));
+                          setResidentVisitors([]);
+                          fetchApartmentResidents(aptId);
+                        }}
+                        style={{
+                          background: isSelected ? 'rgba(212, 175, 55, 0.15)' : '#1a1a1e',
+                          border: `1px solid ${isSelected ? '#D4AF37' : '#2e2e33'}`,
+                          padding: '8px 10px',
+                          borderRadius: '6px',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center'
+                        }}
+                      >
+                        <span style={{ color: isSelected ? '#D4AF37' : '#ffffff', fontWeight: isSelected ? 'bold' : 'normal', fontSize: '13px' }}>
+                          {apt.block ? `${apt.block} - ` : ''}Apto {apt.number}
+                        </span>
+                        {isSelected && <span style={{ color: '#4ade80', fontSize: '12px' }}>✓ Seleccionado</span>}
+                      </div>
+                    );
+                  })
+                ) : (
+                  <p style={{ color: '#737373', fontSize: '12px', textAlign: 'center', margin: '10px 0', fontStyle: 'italic' }}>
+                    No se encontraron apartamentos con ese filtro.
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <form onSubmit={handleVisitorSubmit}>
+              
+              {/* SELECTOR DE RESIDENTES (Depende del apartamento seleccionado) */}
+              <div className="input-group">
+                <label className="input-label">Residente a Visitar (Opcional)</label>
+                <select
+                  className="minuta-input"
+                  value={visitorForm.residentId}
+                  onChange={(e) => {
+                    const selectedResId = e.target.value;
+                    setVisitorForm({ ...visitorForm, residentId: selectedResId });
+                    fetchResidentVisitors(selectedResId);
+                  }}
+                  disabled={!visitorForm.apartmentId || loadingResidents}
+                >
+                  <option value="" style={{ background: '#121214' }}>
+                    {loadingResidents ? 'Cargando residentes...' : '-- Seleccione residente que recibe --'}
+                  </option>
+                  {apartmentResidents.map((res: any) => (
+                    <option key={res.id || res._id} value={res.id || res._id} style={{ background: '#121214' }}>
+                      {res.fullName} ({res.documentId || 'Sin cédula'})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* --- VISUALIZACIÓN DINÁMICA DE VISITANTES ACTIVOS DEL RESIDENTE SELECCIONADO CON BOTÓN DE CHECK-OUT --- */}
+              {visitorForm.residentId && (
+                <div style={{ backgroundColor: '#18181b', border: '1px solid #27272a', padding: '12px', borderRadius: '8px', marginBottom: '15px' }}>
+                  <p style={{ fontSize: '13px', fontWeight: 'bold', color: '#D4AF37', margin: '0 0 8px 0' }}>
+                    📋 Visitantes activos / pendientes para este residente:
+                  </p>
+                  
+                  {loadingResidentVisitors ? (
+                    <p style={{ fontSize: '12px', color: '#a1a1aa', margin: 0 }}>Buscando visitantes...</p>
+                  ) : residentVisitors.filter(v => v.status === 'PENDING' || v.status === 'IN').length === 0 ? (
+                    <p style={{ fontSize: '12px', color: '#a1a1aa', margin: 0 }}>No tiene visitantes activos en este momento.</p>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      {residentVisitors
+                        .filter(v => v.status === 'PENDING' || v.status === 'IN')
+                        .map(visitor => {
+                          const vId = visitor.id || visitor._id;
+                          return (
+                            <div key={vId} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#222228', padding: '8px 10px', borderRadius: '6px' }}>
+                              <div style={{ fontSize: '12px', color: '#e4e4e7' }}>
+                                <strong>{visitor.fullName}</strong> — 
+                                <span style={{ color: visitor.status === 'IN' ? '#4ade80' : '#facc15' }}> {visitor.status}</span> 
+                                {visitor.vehiclePlate ? ` (Vehículo: ${visitor.vehiclePlate})` : ' (Peatonal)'}
+                              </div>
+                              {visitor.status === 'IN' && (
+                                <button 
+                                  type="button" 
+                                  className="checkout-btn"
+                                  onClick={() => handleCheckOut(vId)}
+                                >
+                                  Marcar Salida
+                                </button>
+                              )}
+                            </div>
+                          );
+                        })}
+                    </div>
+                  )}
+                </div>
+              )}
+              
+              <div className="input-group">
+                <label className="input-label">Nombre Completo del Visitante</label>
+                <input
+                  className="minuta-input"
+                  placeholder="Ej. Carlos Mendoza"
+                  value={visitorForm.fullName}
+                  onChange={(e) => setVisitorForm({ ...visitorForm, fullName: e.target.value })}
+                  required
+                />
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div className="input-group">
+                  <label className="input-label">Tipo de Documento</label>
+                  <select
+                    className="minuta-input"
+                    value={visitorForm.documentType}
+                    onChange={(e) => setVisitorForm({ ...visitorForm, documentType: e.target.value })}
+                  >
+                    {DOCUMENT_TYPES.map((doc) => (
+                      <option key={doc} value={doc} style={{ background: '#121214' }}>{doc}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="input-group">
+                  <label className="input-label">Nº de Documento</label>
+                  <input
+                    className="minuta-input"
+                    placeholder="Número de identidad"
+                    value={visitorForm.documentId}
+                    onChange={(e) => setVisitorForm({ ...visitorForm, documentId: e.target.value })}
+                    required
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div className="input-group">
+                  <label className="input-label">Teléfono (Opcional)</label>
+                  <input
+                    className="minuta-input"
+                    placeholder="Ej. 3001234567"
+                    value={visitorForm.phone}
+                    onChange={(e) => setVisitorForm({ ...visitorForm, phone: e.target.value })}
+                  />
+                </div>
+
+                <div className="input-group">
+                  <label className="input-label">Placa Vehículo (Opcional)</label>
+                  <input
+                    className="minuta-input"
+                    placeholder="Si ingresa en vehículo"
+                    value={visitorForm.vehiclePlate}
+                    onChange={(e) => setVisitorForm({ ...visitorForm, vehiclePlate: e.target.value })}
+                  />
+                </div>
+              </div>
+
+              <div className="input-group">
+                <label className="input-label">Propósito de la Visita (Opcional)</label>
+                <input
+                  className="minuta-input"
+                  placeholder="Ej. Familiar, Domicilio, Amigo..."
+                  value={visitorForm.purpose}
+                  onChange={(e) => setVisitorForm({ ...visitorForm, purpose: e.target.value })}
+                />
+              </div>
+
+              <div className="input-group">
+                <label className="input-label">Notas Adicionales (Opcional)</label>
+                <input
+                  className="minuta-input"
+                  placeholder="Observaciones de ingreso..."
+                  value={visitorForm.notes}
+                  onChange={(e) => setVisitorForm({ ...visitorForm, notes: e.target.value })}
+                />
+              </div>
+
+              <div className="input-group">
+                <label className="input-label">Apartamento Seleccionado (ID)</label>
+                <input
+                  className="minuta-input"
+                  placeholder="Selecciona un apartamento de la lista superior"
+                  value={visitorForm.apartmentId}
+                  readOnly
+                  required
+                  style={{ color: '#D4AF37', fontWeight: 'bold' }}
+                />
+              </div>
+
+              {visitorMessage && (
+                <p style={{ color: visitorMessage.includes('exitosamente') ? '#4ade80' : '#f87171', fontSize: '12px', textAlign: 'center' }}>
+                  {visitorMessage}
+                </p>
+              )}
+
+              <button type="submit" className="submit-btn" disabled={visitorLoading || !visitorForm.apartmentId}>
+                {visitorLoading ? 'Registrando Visitante...' : 'Registrar Ingreso Peatonal'}
               </button>
             </form>
           </div>

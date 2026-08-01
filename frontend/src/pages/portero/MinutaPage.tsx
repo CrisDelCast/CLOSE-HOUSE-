@@ -11,12 +11,20 @@ interface VehicleInfo {
   vehicleId?: string;
 }
 
-// Tipado para los estados de cada parte del checklist
+// Tipado estricto para los estados de cada parte del checklist
 type ChecklistStatus = 'bien' | 'regular' | 'mal';
 
 interface ChecklistItemState {
   status: ChecklistStatus;
   observations: string;
+}
+
+interface ChecklistState {
+  vidrios: ChecklistItemState;
+  carroceria: ChecklistItemState;
+  luces: ChecklistItemState;
+  llantas: ChecklistItemState;
+  espejos: ChecklistItemState;
 }
 
 const VEHICLE_PARTS = [
@@ -30,6 +38,7 @@ const VEHICLE_PARTS = [
 const createInitialForm = () => ({
   plate: '',
   vehicleId: '',
+  lastReportId: null as string | null,
   status: 'BIEN',
   observations: '',
   checklist: {
@@ -38,7 +47,7 @@ const createInitialForm = () => ({
     luces: { status: 'bien' as ChecklistStatus, observations: '' },
     llantas: { status: 'bien' as ChecklistStatus, observations: '' },
     espejos: { status: 'bien' as ChecklistStatus, observations: '' },
-  },
+  } as ChecklistState,
 });
 
 const CHECKLIST_LABELS: Record<string, string> = {
@@ -99,15 +108,14 @@ const MinutaPage = () => {
     setForm((prev) => ({ ...prev, [name]: value }));
   };
 
-  // Manejador específico para actualizar el checklist de cada parte
-  const handleChecklistChange = (partKey: string, field: 'status' | 'observations', value: string) => {
+  const handleChecklistChange = (partKey: keyof ChecklistState, field: 'status' | 'observations', value: string) => {
     setForm((prev) => ({
       ...prev,
       checklist: {
         ...prev.checklist,
         [partKey]: {
-          ...(prev.checklist as any)[partKey],
-          [field]: value,
+          ...prev.checklist[partKey],
+          [field]: field === 'status' ? (value as ChecklistStatus) : value,
         },
       },
     }));
@@ -119,9 +127,10 @@ const MinutaPage = () => {
 
     setIsSearchingPlate(true);
     setVehicleDetails(null);
-    setForm(prev => ({ ...prev, vehicleId: '' }));
+    setForm(prev => ({ ...prev, vehicleId: '', lastReportId: null }));
 
     try {
+      // 1. Buscamos el vehículo por placa
       const { data } = await axios.get(`/api/properties/vehicles/plate/${encodeURIComponent(cleanPlate.toUpperCase())}`);
       
       if (data && data.id) {
@@ -132,8 +141,6 @@ const MinutaPage = () => {
           ? `${apt.block ? `${apt.block} - ` : ''}Apto ${apt.number}` 
           : 'No asignado';
 
-        setForm(prev => ({ ...prev, vehicleId: data.id }));
-
         setVehicleDetails({
           apartmentNumber: aptText,
           owners: [
@@ -142,8 +149,65 @@ const MinutaPage = () => {
           ],
           vehicleId: data.id,
         });
+
+        // 2. Buscamos si existe un reporte previo de este vehículo para precargar y capturar su ID
+        try {
+          const reportsData = await fetchVehicleReports();
+          const vehicleReports = reportsData.filter(
+            (rep) => rep.vehicle?.id === data.id || (rep as any).vehicleId === data.id
+          );
+
+          if (vehicleReports.length > 0) {
+            const latestReport = vehicleReports[0];
+
+            // Función auxiliar segura para normalizar el estado del checklist proveniente de la API
+            const parseStatus = (statusStr: string | undefined): ChecklistStatus => {
+              const lower = (statusStr || '').toLowerCase();
+              if (lower === 'bien' || lower === 'regular' || lower === 'mal') {
+                return lower as ChecklistStatus;
+              }
+              return 'bien';
+            };
+
+            const incomingChecklist = latestReport.checklist as any;
+
+            setForm(prev => ({
+              ...prev,
+              vehicleId: data.id,
+              lastReportId: latestReport.id,
+              status: latestReport.status || 'BIEN',
+              observations: latestReport.observations || '',
+              checklist: incomingChecklist ? {
+                vidrios: {
+                  status: parseStatus(incomingChecklist.vidrios?.status),
+                  observations: incomingChecklist.vidrios?.observations || ''
+                },
+                carroceria: {
+                  status: parseStatus(incomingChecklist.carroceria?.status),
+                  observations: incomingChecklist.carroceria?.observations || ''
+                },
+                luces: {
+                  status: parseStatus(incomingChecklist.luces?.status),
+                  observations: incomingChecklist.luces?.observations || ''
+                },
+                llantas: {
+                  status: parseStatus(incomingChecklist.llantas?.status),
+                  observations: incomingChecklist.llantas?.observations || ''
+                },
+                espejos: {
+                  status: parseStatus(incomingChecklist.espejos?.status),
+                  observations: incomingChecklist.espejos?.observations || ''
+                },
+              } : prev.checklist
+            }));
+          } else {
+            setForm(prev => ({ ...prev, vehicleId: data.id, lastReportId: null }));
+          }
+        } catch {
+          setForm(prev => ({ ...prev, vehicleId: data.id, lastReportId: null }));
+        }
       }
-    } catch (err) {
+    } catch {
       setVehicleDetails({
         apartmentNumber: 'No encontrado en el sistema',
         owners: ['Sin registros asociados para esta placa'],
@@ -178,34 +242,40 @@ const MinutaPage = () => {
       formData.append('vehicleId', form.vehicleId);
       formData.append('status', form.status);
       formData.append('observations', form.observations);
-      
-      // 🛠️ AQUÍ ESTÁ LA CLAVE: Debe ir envuelto en JSON.stringify()
       formData.append('checklist', JSON.stringify(form.checklist));
       
       if (imageFile) {
         formData.append('image', imageFile);
       }
-  
-      const { data } = await axios.post('/api/vehicle-reports', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-      });
+
+      let response;
+
+      if (form.lastReportId) {
+        response = await axios.put(`/api/vehicle-reports/${form.lastReportId}`, formData, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        });
+      } else {
+        response = await axios.post('/api/vehicle-reports', formData, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        });
+      }
   
       resetForm();
       await loadReports();
 
+      const data = response.data;
       const warnings = Array.isArray(data?.warnings) ? data.warnings.join(' ') : '';
+      
       setSuccessMessage(
         warnings
-          ? `Reporte registrado. ${warnings}`
-          : '¡Reporte vehicular y checklist registrados exitosamente!',
+          ? `Reporte actualizado. ${warnings}`
+          : '¡Minuta vehicular actualizada exitosamente!',
       );
     } catch (err: any) {
       const responseData = err.response?.data;
       const message = Array.isArray(responseData?.message)
         ? responseData.message.join(', ')
-        : responseData?.message || 'No fue posible guardar el reporte vehicular.';
+        : responseData?.message || 'No fue posible guardar o actualizar el reporte vehicular.';
       setError(message);
     } finally {
       setIsSubmitting(false);
@@ -513,7 +583,7 @@ const MinutaPage = () => {
             style={{ textTransform: 'uppercase' }}
             required
           />
-          {isSearchingPlate && <span style={{ fontSize: '11px', color: '#D4AF37' }}>Buscando información del vehículo...</span>}
+          {isSearchingPlate && <span style={{ fontSize: '11px', color: '#D4AF37' }}>Buscando información y minuta anterior...</span>}
         </div>
 
         {/* TARJETA VISUAL: APARTAMENTO Y INFO */}
@@ -521,6 +591,11 @@ const MinutaPage = () => {
           <div className="vehicle-info-box">
             <p><strong>🏠 Apartamento:</strong> {vehicleDetails.apartmentNumber}</p>
             <p><strong>👤 INFO:</strong> {vehicleDetails.owners?.join(', ') || 'No registrado'}</p>
+            {form.lastReportId && (
+              <p style={{ color: '#4ade80', marginTop: '6px', fontSize: '12px' }}>
+                ℹ️ Reporte existente detectado. Al guardar se **actualizará** este registro.
+              </p>
+            )}
           </div>
         )}
 
@@ -545,7 +620,7 @@ const MinutaPage = () => {
           <label className="input-label">Checklist de Inspección (Partes del Vehículo)</label>
           <div className="checklist-container">
             {VEHICLE_PARTS.map((part) => {
-              const partData = (form.checklist as any)[part.key];
+              const partData = form.checklist[part.key];
               return (
                 <div key={part.key} className="checklist-item">
                   <div className="checklist-row">
@@ -621,7 +696,7 @@ const MinutaPage = () => {
 
         {/* BOTÓN DE GUARDAR */}
         <button type="submit" className="submit-btn" disabled={isSubmitting}>
-          {isSubmitting ? 'Guardando registro...' : 'Registrar Minuta Vehicular'}
+          {isSubmitting ? 'Guardando registro...' : 'Actualizar Minuta Vehicular'}
         </button>
       </form>
 
