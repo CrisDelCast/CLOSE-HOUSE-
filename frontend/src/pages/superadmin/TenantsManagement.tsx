@@ -40,8 +40,7 @@ const INITIAL_FORM_STATE = {
   vehicleControlSchedule: '22:00 a 05:00',
 };
 
-
-// Expresión regular para validar formato Slug (solo minusculas, números y guiones)
+// Expresión regular para validar formato Slug (solo minúsculas, números y guiones)
 const SLUG_REGEX = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 // Expresión regular básica para emails
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -50,28 +49,18 @@ const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5 MB
 
 export default function TenantsManagement() {
-  const [previewImage, setPreviewImage] = useState<string | null>(null);
   const { user } = useAuthContext();
   const queryClient = useQueryClient();
 
   // Estados principales
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [feedback, setFeedback] = useState('');
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
+
+  // Estados para Puntos de Control y QR
   const [selectedTenantForPoints, setSelectedTenantForPoints] = useState<Tenant | null>(null);
   const [newPointName, setNewPointName] = useState('');
   const [pointFeedback, setPointFeedback] = useState('');
-
-  // Estados de errores por campo
-  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
-  const [pointError, setPointError] = useState('');
-
-  // Traer Tenants
-  const { data: tenants, isLoading, isError } = useQuery({
-    queryKey: ['tenants'],
-    queryFn: fetchTenants,
-  });
-
-  const safeTenants: Tenant[] = Array.isArray(tenants) ? tenants : [];
 
   // Estados para imágenes de ubicación
   const [selectedTenantForImages, setSelectedTenantForImages] = useState<Tenant | null>(null);
@@ -80,6 +69,19 @@ export default function TenantsManagement() {
   const [activeImageTab, setActiveImageTab] = useState<'upload' | 'list'>('upload');
   const [existingImages, setExistingImages] = useState<LocationImage[]>([]);
   const [isLoadingImages, setIsLoadingImages] = useState(false);
+
+  // Estados de errores por campo
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+  const [pointError, setPointError] = useState('');
+  const [formData, setFormData] = useState(INITIAL_FORM_STATE);
+
+  // Traer Tenants
+  const { data: tenants, isLoading, isError } = useQuery({
+    queryKey: ['tenants'],
+    queryFn: fetchTenants,
+  });
+
+  const safeTenants: Tenant[] = Array.isArray(tenants) ? tenants : [];
 
   // Traer Puntos de Control
   const { data: controlPoints, isLoading: isLoadingPoints } = useQuery<ControlPoint[]>({
@@ -99,7 +101,6 @@ export default function TenantsManagement() {
   });
 
   const safeControlPoints: ControlPoint[] = Array.isArray(controlPoints) ? controlPoints : [];
-  const [formData, setFormData] = useState(INITIAL_FORM_STATE);
 
   // ---------------------------------------------------------------------------
   // 🔍 VALIDACIONES EN FRONTEND
@@ -193,34 +194,17 @@ export default function TenantsManagement() {
     }
   };
 
-  // ---------------------------------------------------------------------------
-// 🔍 MUTACIÓN Y VALIDACIÓN PARA ASIGNAR CHECKPOINT A UNA IMAGEN
-// ---------------------------------------------------------------------------
-
   const assignImageMutation = useMutation({
     mutationFn: async ({ imageId, checkpointId }: { imageId: string; checkpointId: string }) => {
-      // 1. Validación en Frontend antes de llamar a la API
       if (!imageId) {
         throw new Error('El ID de la imagen es obligatorio.');
       }
-
-      // 2. Petición PATCH enviando checkpointId en el BODY de la petición
       const { data } = await api.patch(`/tenants/location-images/${imageId}/checkpoint`, {
-        checkpointId: checkpointId || null, // Si es string vacío, envía null para desasociar
+        checkpointId: checkpointId || null,
       });
-
       return data;
     },
     onSuccess: (_, variables) => {
-      // Mensaje dinámico según si asoció o desasoció
-      const mensaje = variables.checkpointId 
-        ? '¡Punto de control asociado correctamente!' 
-        : '¡Imagen desasociada del punto de control!';
-      
-      // Opcional: mostrar notificación o feedback rápido
-      console.log(mensaje);
-
-      // Recargar la lista de imágenes para reflejar los cambios
       if (selectedTenantForImages) {
         fetchExistingImages(selectedTenantForImages.id);
       }
@@ -308,8 +292,6 @@ export default function TenantsManagement() {
   const handleChange = (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
-
-    // Limpia el error del campo específico a medida que el usuario escribe
     if (formErrors[name]) {
       setFormErrors((prev) => ({ ...prev, [name]: '' }));
     }
@@ -319,7 +301,6 @@ export default function TenantsManagement() {
     e.preventDefault();
     setFeedback('');
 
-    // Prevenir mutación si la validación falla
     if (!validateTenantForm()) return;
 
     const payload: CreateTenantInput = {
@@ -347,7 +328,6 @@ export default function TenantsManagement() {
   const handleAddPointSubmit = (e: FormEvent) => {
     e.preventDefault();
     if (!selectedTenantForPoints?.id) return;
-
     if (!validatePointForm()) return;
 
     const nextSequence = safeControlPoints.length + 1;
@@ -365,7 +345,7 @@ export default function TenantsManagement() {
       setImageFiles(files);
     } else {
       setImageFiles(null);
-      e.target.value = ''; // Resetea el input file si no pasa la validación
+      e.target.value = '';
     }
   };
 
@@ -490,13 +470,13 @@ export default function TenantsManagement() {
                 <th style={{ padding: '16px' }}>Capacidad / Tipo</th>
                 <th style={{ padding: '16px' }}>Administrador</th>
                 <th style={{ padding: '16px' }}>Imágenes Ubicación</th>
-                <th style={{ padding: '16px' }}>Acciones</th>
+                <th style={{ padding: '16px' }}>Acciones QR</th>
               </tr>
             </thead>
             <tbody>
               {safeTenants.length === 0 ? (
                 <tr>
-                  <td colSpan={6} style={{ padding: '32px', textAlign: 'center', color: '#a3a3a3' }}>
+                  <td colSpan={7} style={{ padding: '32px', textAlign: 'center', color: '#a3a3a3' }}>
                     No hay conjuntos residenciales registrados.
                   </td>
                 </tr>
@@ -519,6 +499,7 @@ export default function TenantsManagement() {
                       <strong style={{ color: '#ffffff' }}>{tenant.adminName}</strong><br />
                       <span style={{ color: '#a3a3a3' }}>{tenant.adminEmail}</span>
                     </td>
+                    
                     <td style={{ padding: '16px' }}>
                       <button
                         onClick={() => {
@@ -570,7 +551,6 @@ export default function TenantsManagement() {
             </button>
           </div>
 
-          {/* Botones de pestañas internas */}
           <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
             <button
               onClick={() => setActiveImageTab('upload')}
@@ -630,76 +610,69 @@ export default function TenantsManagement() {
               </button>
             </form>
           ) : (
-            /* SECCIÓN DE VISUALIZACIÓN Y ASOCIACIÓN */
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '16px' }}>
-            {existingImages.map((img) => (
-              <div key={img.id} style={{ background: '#121214', border: '1px solid #2e2e33', borderRadius: '12px', padding: '12px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                
-                {/* IMAGEN: Al dar clic se abre en tamaño real */}
-                <img 
-                  src={img.imageUrl} 
-                  alt="Ubicación" 
-                  onClick={() => setPreviewImage(img.imageUrl)}
-                  style={{ 
-                    width: '100%', 
-                    height: '180px', 
-                    objectFit: 'contain', // Mantiene la proporción original sin recortar
-                    background: '#0c0c0e', 
-                    borderRadius: '8px', 
-                    border: '1px solid #2e2e33',
-                    cursor: 'pointer'
-                  }} 
-                  title="Haz clic para ver en tamaño completo"
-                />
-                
-                <div>
-                  <label style={{ display: 'block', fontSize: '11px', color: '#D4AF37', fontWeight: 'bold', marginBottom: '4px', textTransform: 'uppercase' }}>
-                    Asociar a Punto de Control:
-                  </label>
-                  
-                  <select
-                    defaultValue={img.checkpointId || ''}
-                    disabled={assignImageMutation.isPending}
-                    onChange={(e) => {
-                      const newCheckpointId = e.target.value;
-                      const currentCheckpointId = img.checkpointId || '';
-
-                      if (newCheckpointId === currentCheckpointId) return;
-
-                      assignImageMutation.mutate({
-                        imageId: img.id,
-                        checkpointId: newCheckpointId,
-                      });
-                    }}
+              {existingImages.map((img) => (
+                <div key={img.id} style={{ background: '#121214', border: '1px solid #2e2e33', borderRadius: '12px', padding: '12px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  <img 
+                    src={img.imageUrl} 
+                    alt="Ubicación" 
+                    onClick={() => setPreviewImage(img.imageUrl)}
                     style={{ 
                       width: '100%', 
-                      background: '#1c1c1f', 
-                      color: '#fff', 
-                      border: '1px solid #2e2e33', 
-                      padding: '8px', 
-                      borderRadius: '6px', 
-                      fontSize: '13px',
-                      opacity: assignImageMutation.isPending ? 0.6 : 1,
-                      cursor: assignImageMutation.isPending ? 'not-allowed' : 'pointer'
-                    }}
-                  >
-                    <option value="">-- Sin asignar (Plano general) --</option>
-                    {safeControlPoints.map((cp) => (
-                      <option key={cp.id} value={cp.id}>
-                        #{cp.sequenceOrder} - {cp.name}
-                      </option>
-                    ))}
-                  </select>
+                      height: '180px', 
+                      objectFit: 'contain', 
+                      background: '#0c0c0e', 
+                      borderRadius: '8px', 
+                      border: '1px solid #2e2e33',
+                      cursor: 'pointer'
+                    }} 
+                    title="Haz clic para ver en tamaño completo"
+                  />
+                  <div>
+                    <label style={{ display: 'block', fontSize: '11px', color: '#D4AF37', fontWeight: 'bold', marginBottom: '4px', textTransform: 'uppercase' }}>
+                      Asociar a Punto de Control:
+                    </label>
+                    <select
+                      defaultValue={img.checkpointId || ''}
+                      disabled={assignImageMutation.isPending}
+                      onChange={(e) => {
+                        const newCheckpointId = e.target.value;
+                        const currentCheckpointId = img.checkpointId || '';
+                        if (newCheckpointId === currentCheckpointId) return;
+
+                        assignImageMutation.mutate({
+                          imageId: img.id,
+                          checkpointId: newCheckpointId,
+                        });
+                      }}
+                      style={{ 
+                        width: '100%', 
+                        background: '#1c1c1f', 
+                        color: '#fff', 
+                        border: '1px solid #2e2e33', 
+                        padding: '8px', 
+                        borderRadius: '6px', 
+                        fontSize: '13px',
+                        opacity: assignImageMutation.isPending ? 0.6 : 1,
+                        cursor: assignImageMutation.isPending ? 'not-allowed' : 'pointer'
+                      }}
+                    >
+                      <option value="">-- Sin asignar (Plano general) --</option>
+                      {safeControlPoints.map((cp) => (
+                        <option key={cp.id} value={cp.id}>
+                          #{cp.sequenceOrder} - {cp.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
-             
+              ))}
+            </div>
           )}
         </div>
       )}
 
-      {/* 📍 SECCIÓN: CONFIGURACIÓN DE CÓDIGOS QR */}
+      {/* 📍 SECCIÓN: CONFIGURACIÓN DE CÓDIGOS QR E IMPRESIÓN */}
       {selectedTenantForPoints && (
         <div style={{ 
           background: 'rgba(22, 22, 26, 0.95)', 
@@ -787,12 +760,177 @@ export default function TenantsManagement() {
                             style={{ width: '130px', height: '130px', display: 'block' }} 
                           />
                         </div>
+
+                        <span style={{ fontSize: '10px', color: '#5a4b22', marginTop: '10px', fontFamily: 'monospace' }}>
+                          {point.qrCodeToken.substring(0, 16)}...
+                        </span>
+
+                        <button 
+                          onClick={() => {
+                            const win = window.open();
+                            if (win) {
+                              const logoUrl = logoDuxs; 
+                              win.document.write(`
+                                <!DOCTYPE html>
+                                <html>
+                                  <head>
+                                    <title>QR - ${point.name}</title>
+                                    <style>
+                                      body { background-color: #0c0c0e; color: #ffffff; font-family: sans-serif; margin: 0; padding: 40px 20px; display: flex; justify-content: center; align-items: center; min-height: 100vh; box-sizing: border-box; }
+                                      .print-card { background: #121214; border: 2px solid #D4AF37; border-radius: 20px; padding: 40px; max-width: 450px; width: 100%; text-align: center; box-sizing: border-box; }
+                                      .logo-container { display: flex; justify-content: center; margin-bottom: 30px; }
+                                      .logo-img { max-width: 200px; height: 60px; object-fit: contain; }
+                                      .badge-point { display: inline-block; background: rgba(212, 175, 55, 0.12); color: #D4AF37; border: 1px solid rgba(212, 175, 55, 0.4); padding: 6px 14px; border-radius: 30px; font-size: 12px; font-weight: bold; margin-bottom: 20px; text-transform: uppercase; }
+                                      h1 { font-size: 22px; margin: 0 0 8px 0; color: #ffffff; }
+                                      h3 { font-size: 13px; color: #a3a3a3; margin: 0 0 24px 0; text-transform: uppercase; }
+                                      .qr-container { background: #ffffff; padding: 16px; border-radius: 16px; display: inline-block; margin-bottom: 20px; }
+                                      .qr-img { width: 200px; height: 200px; display: block; }
+                                      .instruction { font-size: 12px; color: #a3a3a3; line-height: 1.4; margin: 0; }
+                                      @media print {
+                                        body { background: #ffffff; color: #000000; }
+                                        .print-card { background: #ffffff; border: 1px solid #000; box-shadow: none; }
+                                        h1 { color: #000; }
+                                      }
+                                    </style>
+                                  </head>
+                                  <body>
+                                    <div class="print-card">
+                                      <div class="logo-container">
+                                        <img class="logo-img" src="${logoUrl}" alt="Logo Empresa" onerror="this.style.display='none';" />
+                                      </div>
+                                      <span class="badge-point">Punto de Control #${point.sequenceOrder}</span>
+                                      <h1>${point.name}</h1>
+                                      <h3>${selectedTenantForPoints?.name}</h3>
+                                      <div class="qr-container">
+                                        <img class="qr-img" src="${qrUrl}" alt="QR" />
+                                      </div>
+                                      <p class="instruction">Escanee este código únicamente desde la app autorizada para registrar su ronda de seguridad.</p>
+                                    </div>
+                                    <script>window.onload = function() { window.print(); };</script>
+                                  </body>
+                                </html>
+                              `);
+                              win.document.close();
+                            } else {
+                              alert("Habilita las ventanas emergentes en tu navegador para imprimir.");
+                            }
+                          }}
+                          className="btn-dark-outline"
+                          style={{ marginTop: '14px', width: '100%' }}
+                        >
+                          🖨️ Imprimir QR
+                        </button>
                       </div>
                     );
                   })}
                 </div>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE PREVISUALIZACIÓN DE IMÁGENES */}
+      {previewImage && (
+        <div 
+          onClick={() => setPreviewImage(null)}
+          style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.9)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1100, padding: '20px', cursor: 'zoom-out' }}
+        >
+          <img src={previewImage} alt="Preview Grande" style={{ maxWidth: '90%', maxHeight: '90%', objectFit: 'contain', borderRadius: '8px', border: '2px solid #D4AF37' }} />
+        </div>
+      )}
+
+      {/* MODAL FORMULARIO DE CREACIÓN */}
+      {isModalOpen && (
+        <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(12, 12, 14, 0.85)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000, padding: '20px', backdropFilter: 'blur(8px)' }}>
+          <div style={{ background: 'rgba(22, 22, 26, 0.98)', borderRadius: '16px', width: '100%', maxWidth: '650px', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.7)', border: '1px solid rgba(212, 175, 55, 0.25)' }}>
+            
+            <div style={{ padding: '20px', borderBottom: '1px solid #2e2e33', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3 style={{ margin: 0, fontSize: '20px', color: '#ffffff', fontWeight: '700' }}>Registrar Nuevo Conjunto Residencial</h3>
+              <button onClick={() => setIsModalOpen(false)} style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer', color: '#a3a3a3' }}>✕</button>
+            </div>
+
+            <form onSubmit={handleSubmit} style={{ padding: '20px' }}>
+              
+              <h4 style={{ margin: '0 0 12px 0', color: '#D4AF37', fontSize: '13px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '1px', borderBottom: '1px solid #2e2e33', paddingBottom: '6px' }}>🏢 Datos e Infraestructura</h4>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '20px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', color: 'rgba(212, 175, 55, 0.9)', textTransform: 'uppercase', marginBottom: '4px' }}>Nombre</label>
+                  <input type="text" name="name" required value={formData.name} onChange={handleChange} className={`custom-input ${formErrors.name ? 'is-invalid' : ''}`} placeholder="Ej: Altos del Limonar" />
+                  {formErrors.name && <span className="error-msg">{formErrors.name}</span>}
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', color: 'rgba(212, 175, 55, 0.9)', textTransform: 'uppercase', marginBottom: '4px' }}>Slug URL (Único)</label>
+                  <input type="text" name="slug" required value={formData.slug} onChange={handleChange} className={`custom-input ${formErrors.slug ? 'is-invalid' : ''}`} placeholder="Ej: limonar" />
+                  {formErrors.slug && <span className="error-msg">{formErrors.slug}</span>}
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', color: 'rgba(212, 175, 55, 0.9)', textTransform: 'uppercase', marginBottom: '4px' }}>Total Unidades/Aptos</label>
+                  <input type="number" name="totalUnits" value={formData.totalUnits} onChange={handleChange} className={`custom-input ${formErrors.totalUnits ? 'is-invalid' : ''}`} placeholder="Ej: 160" />
+                  {formErrors.totalUnits && <span className="error-msg">{formErrors.totalUnits}</span>}
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', color: 'rgba(212, 175, 55, 0.9)', textTransform: 'uppercase', marginBottom: '4px' }}>Total Parqueaderos</label>
+                  <input type="number" name="totalParkingSlots" value={formData.totalParkingSlots} onChange={handleChange} className={`custom-input ${formErrors.totalParkingSlots ? 'is-invalid' : ''}`} placeholder="Ej: 90" />
+                  {formErrors.totalParkingSlots && <span className="error-msg">{formErrors.totalParkingSlots}</span>}
+                </div>
+              </div>
+
+              <h4 style={{ margin: '16px 0 12px 0', color: '#D4AF37', fontSize: '13px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '1px', borderBottom: '1px solid #2e2e33', paddingBottom: '6px' }}>📞 Datos de la Administración</h4>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '20px' }}>
+                <div style={{ gridColumn: 'span 2' }}>
+                  <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', color: 'rgba(212, 175, 55, 0.9)', textTransform: 'uppercase', marginBottom: '4px' }}>Nombre Completo Admin</label>
+                  <input type="text" name="adminName" required value={formData.adminName} onChange={handleChange} className={`custom-input ${formErrors.adminName ? 'is-invalid' : ''}`} />
+                  {formErrors.adminName && <span className="error-msg">{formErrors.adminName}</span>}
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', color: 'rgba(212, 175, 55, 0.9)', textTransform: 'uppercase', marginBottom: '4px' }}>Email Admin</label>
+                  <input type="email" name="adminEmail" required value={formData.adminEmail} onChange={handleChange} className={`custom-input ${formErrors.adminEmail ? 'is-invalid' : ''}`} />
+                  {formErrors.adminEmail && <span className="error-msg">{formErrors.adminEmail}</span>}
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', color: 'rgba(212, 175, 55, 0.9)', textTransform: 'uppercase', marginBottom: '4px' }}>Teléfono Admin</label>
+                  <input type="text" name="adminPhone" required value={formData.adminPhone} onChange={handleChange} className="custom-input" />
+                </div>
+              </div>
+
+              <h4 style={{ margin: '16px 0 12px 0', color: '#fbbf24', fontSize: '13px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '1px', borderBottom: '1px solid rgba(212, 175, 55, 0.2)', paddingBottom: '6px' }}>🚨 Configuración Inicial de Rondas</h4>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '20px', background: 'rgba(212, 175, 55, 0.05)', padding: '16px', borderRadius: '8px', border: '1px solid rgba(212, 175, 55, 0.15)' }}>
+                <div style={{ gridColumn: 'span 2' }}>
+                  <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', color: '#D4AF37', textTransform: 'uppercase', marginBottom: '4px' }}>Cantidad de puntos de la ronda (Marcaciones)</label>
+                  <input type="number" name="totalRoundPoints" required value={formData.totalRoundPoints} onChange={handleChange} className="custom-input" />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', color: '#D4AF37', textTransform: 'uppercase', marginBottom: '4px' }}>Minutos por punto de marcado</label>
+                  <input type="number" name="timePerPoint" required value={formData.timePerPoint} onChange={handleChange} className="custom-input" />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', color: '#D4AF37', textTransform: 'uppercase', marginBottom: '4px' }}>Minutos de descanso entre rondas</label>
+                  <input type="number" name="timeBetweenPoints" required value={formData.timeBetweenPoints} onChange={handleChange} className="custom-input" />
+                </div>
+                <div style={{ gridColumn: 'span 2' }}>
+                  <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', color: '#D4AF37', textTransform: 'uppercase', marginBottom: '4px' }}>Horario Control Vehicular Obligatorio</label>
+                  <input type="text" name="vehicleControlSchedule" required value={formData.vehicleControlSchedule} onChange={handleChange} className="custom-input" />
+                </div>
+              </div>
+
+              <div style={{ marginBottom: '24px' }}>
+                <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', color: 'rgba(212, 175, 55, 0.9)', textTransform: 'uppercase', marginBottom: '4px' }}>Normas Internas / Reglamento (Opcional)</label>
+                <textarea name="rulesText" value={formData.rulesText} onChange={handleChange} rows={3} className="custom-input" style={{ resize: 'vertical' }} placeholder="Reglas básicas de convivencia o control..." />
+              </div>
+
+              {feedback && <p style={{ color: '#f87171', fontSize: '14px', marginBottom: '16px', fontWeight: '500' }}>{feedback}</p>}
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', paddingTop: '16px', borderTop: '1px solid #2e2e33' }}>
+                <button type="button" onClick={() => setIsModalOpen(false)} style={{ background: '#2e2e33', color: '#a3a3a3', padding: '10px 18px', borderRadius: '8px', border: 'none', fontWeight: 'bold', cursor: 'pointer' }}>
+                  Cancelar
+                </button>
+                <button type="submit" disabled={createMutation.isPending} className="btn-gold" style={{ padding: '10px 22px' }}>
+                  {createMutation.isPending ? 'Guardando...' : 'Guardar Conjunto'}
+                </button>
+              </div>
+
+            </form>
           </div>
         </div>
       )}

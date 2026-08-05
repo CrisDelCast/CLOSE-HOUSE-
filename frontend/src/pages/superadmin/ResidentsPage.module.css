@@ -1,34 +1,278 @@
-.pageWrapper { padding: 20px; color: #fff; }
-.apartmentCard { background: #1c1c1c; padding: 20px; border-radius: 12px; cursor: pointer; border: 1px solid #333; }
-.apartmentCard:hover { border-color: #D4AF37; }
-
-.modalOverlay { 
-  position: fixed; top:0; left:0; width:100%; height:100%; 
-  background: rgba(0,0,0,0.8); backdrop-filter: blur(5px); 
-  display: flex; justify-content: center; align-items: center; z-index: 1000; 
-}
-.modalContent { 
-  background: #171717; width: 450px; padding: 30px; border-radius: 16px; 
-  border: 1px solid #444; position: relative;
+.pageWrapper {
+  padding: 20px;
+  color: #fff;
 }
 
-.modalTitle { color: #D4AF37; margin-bottom: 20px; }
-.modalGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-.section h4 { color: #888; font-size: 11px; text-transform: uppercase; margin-bottom: 10px; }
-
-.clickableItem { padding: 8px; border-bottom: 1px solid #222; cursor: pointer; }
-.clickableItem:hover { color: #D4AF37; }
-.clickableBadge { 
-  background: #252010; color: #D4AF37; padding: 6px 10px; 
-  border-radius: 6px; cursor: pointer; margin-bottom: 5px; 
+.tenantSwitcherContainer {
+  margin-bottom: 24px;
 }
 
-.detailView { animation: fadeIn 0.3s ease; }
-.backBtn { 
-  background: transparent; border: none; color: #D4AF37; 
-  cursor: pointer; padding: 0; margin-bottom: 15px; font-size: 14px; 
+.headerRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 12px;
 }
-.detailBody { margin-top: 15px; font-size: 13px; color: #ccc; }
-.closeBtn { position: absolute; top: 20px; right: 20px; background: none; border: none; color: #fff; cursor: pointer; }
 
-@keyframes fadeIn { from { opacity: 0; transform: translateX(10px); } to { opacity: 1; transform: translateX(0); } }
+.headerRow h3 {
+  margin: 0;
+}
+
+.tenantSelect {
+  width: 100%;
+  max-width: 420px;
+  padding: 10px 12px;
+  background: #1c1c1c;
+  border: 1px solid #444;
+  border-radius: 8px;
+  color: #fff;
+}
+
+.apartmentsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 16px;
+}
+
+.apartmentCard {
+  background: #1c1c1c;
+  padding: 20px;
+  border-radius: 12px;
+  cursor: pointer;
+  border: 1px solid #333;
+  transition: border-color 0.2s;
+}
+
+.apartmentCard:hover {
+  border-color: #D4AF37;
+}
+
+.cardHeader {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.blockBadge {
+  font-size: 11px;
+  color: #888;
+  text-transform: uppercase;
+}
+
+.unitNumber {
+  font-size: 18px;
+  font-weight: 600;
+  color: #D4AF37;
+}
+
+.cardMeta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: #aaa;
+}
+
+.emptyState {
+  color: #888;
+  font-size: 14px;
+  margin-top: 20px;
+}
+
+.feedback {
+  margin-top: 10px;
+  color: #7dd87d;
+  font-size: 13px;
+}
+
+.modalOverlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.8);
+  backdrop-filter: blur(5px);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+  padding: 20px;
+}
+
+.modalContent {
+  background: #171717;
+  width: 100%;
+  max-width: 450px;
+  padding: 30px;
+  border-radius: 16px;
+  border: 1px solid #444;
+  position: relative;
+}
+
+.modalContentWide {
+  background: #171717;
+  width: 100%;
+  max-width: 520px;
+  padding: 30px;
+  border-radius: 16px;
+  border: 1px solid #444;
+  position: relative;
+}
+
+.modalTitle {
+  color: #D4AF37;
+  margin-bottom: 20px;
+  padding-right: 30px;
+}
+
+.modalGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+
+.section h4 {
+  color: #888;
+  font-size: 11px;
+  text-transform: uppercase;
+  margin: 0;
+}
+
+.sectionHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.clickableItem {
+  padding: 8px;
+  border-bottom: 1px solid #222;
+  cursor: pointer;
+}
+
+.clickableItem:hover {
+  color: #D4AF37;
+}
+
+.clickableBadge {
+  background: #252010;
+  color: #D4AF37;
+  padding: 6px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  margin-bottom: 5px;
+}
+
+.emptyHint {
+  font-size: 12px;
+  color: #666;
+  margin: 0;
+}
+
+.detailView {
+  animation: fadeIn 0.3s ease;
+}
+
+.formView {
+  animation: fadeIn 0.3s ease;
+}
+
+.backBtn {
+  background: transparent;
+  border: none;
+  color: #D4AF37;
+  cursor: pointer;
+  padding: 0;
+  margin-bottom: 15px;
+  font-size: 14px;
+}
+
+.detailBody {
+  margin-top: 15px;
+  font-size: 13px;
+  color: #ccc;
+}
+
+.closeBtn {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  background: none;
+  border: none;
+  color: #fff;
+  cursor: pointer;
+  font-size: 18px;
+}
+
+.primaryBtn {
+  background: #D4AF37;
+  color: #111;
+  border: none;
+  padding: 10px 16px;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.primaryBtn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.linkBtn {
+  background: transparent;
+  border: none;
+  color: #D4AF37;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 0;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #888;
+  text-transform: uppercase;
+}
+
+.input {
+  padding: 10px 12px;
+  background: #111;
+  border: 1px solid #333;
+  border-radius: 8px;
+  color: #fff;
+  font-size: 14px;
+  text-transform: none;
+  font-weight: 400;
+}
+
+.errorMsg {
+  color: #ff6b6b;
+  font-size: 13px;
+  margin: 0;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateX(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}

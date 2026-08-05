@@ -13,6 +13,7 @@ import RondaDashboard from './pages/portero/RondaPage';
 import PuertaDashboard from './pages/portero/PuertaPage';
 import PorteroLayout from './layouts/Portero';
 import RoundsAuditPage from './pages/superadmin/RoundsAuditPage';
+import UsersManagement from './pages/superadmin/UsersManagement';
 import MinutaPage from './pages/portero/MinutaPage';
 import MinutaGeneralPage from './pages/portero/MinutaGeneralPage';
 
@@ -63,11 +64,9 @@ function App() {
         <Route element={<ProtectedRoute allowedRoles={['SUPERADMIN']} />}>
           <Route path="superadmin" element={<SuperAdminLayout />}>
             <Route index element={<Navigate to="dashboard" replace />} />
-            <Route path="dashboard" element={<SuperAdminDashboard />} />
             <Route path="tenants" element={<TenantsManagement />} />
-            <Route path="settings" element={<GlobalSettings />} />
+            <Route path="users" element={<UsersManagement />} />
             <Route path="residents" element={<ResidentsPage />} />
-            <Route path="visitors" element={<VisitorsPage />} />
             <Route path="roundsaudits" element={<RoundsAuditPage />} />
           </Route>
         </Route>

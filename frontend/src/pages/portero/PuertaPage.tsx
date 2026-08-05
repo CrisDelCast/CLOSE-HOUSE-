@@ -393,9 +393,10 @@ export default function PuertaDashboard() {
       const selectedResident = apartmentResidents.find(res => (res.id || res._id) === visitorForm.residentId);
       const residentEmail = selectedResident ? selectedResident.email : null;
 
-      const isLocalDev = true; 
+      // Detecta automáticamente si estás corriendo de forma local o en producción
+      const isLocalDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
       const ngrokUrl = 'https://starlit-handball-chief.ngrok-free.dev'; 
-      const railwayUrl = import.meta.env.VITE_BACKEND_URL || 'https://motivated-kindness-production-e60a.up.railway.app/'; 
+      const railwayUrl = import.meta.env.VITE_BACKEND_URL || 'https://motivated-kindness-production-e60a.up.railway.app'; 
       const backendUrl = isLocalDev ? ngrokUrl : railwayUrl;
 
       await axios.post('/api/properties/send-alert', {

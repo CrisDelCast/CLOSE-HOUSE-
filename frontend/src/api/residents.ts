@@ -11,15 +11,12 @@ export const fetchResidents = async (tenantId: string) => {
   return response.data;
 };
 
-export const createResident = async ({ 
-  residentData, 
-  tenantId 
-}: { 
-  residentData: CreateResidentInput; 
-  tenantId: string; 
-}) => {
-  // Tu llamada a axios / fetch apuntando al tenant correspondiente
-  const response = await api.post(`/tenants/${tenantId}/residents`, residentData);
+export const createResident = async (
+  residentData: CreateResidentInput,
+  tenantId?: string,
+): Promise<Resident> => {
+  const query = tenantId ? `?tenantId=${tenantId}` : '';
+  const response = await api.post<Resident>(`/residents${query}`, residentData);
   return response.data;
 };
 

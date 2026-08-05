@@ -28,12 +28,17 @@ export class ResidentsController {
   @Post()
   @Roles('ADMIN', 'SUPERADMIN')
   create(
-    @TenantId() tenantId: string,
+    @Query('tenantId') queryTenantId: string | undefined,
+    @TenantId() tenantId: string | undefined,
     @Body() createResidentDto: CreateResidentDto,
   ) {
-    // Nota: Si es SUPERADMIN, asegúrate en el frontend de enviarle el tenantId del conjunto seleccionado,
-    // o maneja en el servicio que si el tenantId del decorador es null, lo tome del DTO.
-    return this.residentsService.create(tenantId, createResidentDto);
+    const activeTenantId = queryTenantId || tenantId;
+
+    if (!activeTenantId) {
+      throw new BadRequestException('Se requiere especificar un conjunto (Tenant ID).');
+    }
+
+    return this.residentsService.create(activeTenantId, createResidentDto);
   }
 
   // 2. Obtener todos los residentes (¡Corregido!)

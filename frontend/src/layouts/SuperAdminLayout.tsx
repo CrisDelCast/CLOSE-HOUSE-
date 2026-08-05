@@ -177,20 +177,14 @@ export default function SuperAdminLayout() {
         WebkitOverflowScrolling: 'touch',
         zIndex: 9
       }}>
-        <NavLink to="/superadmin/dashboard" className="nav-link">
-          <span>📊</span> Dashboard Global
-        </NavLink>
         <NavLink to="/superadmin/tenants" className="nav-link">
           <span>🏢</span> Gestionar Conjuntos
         </NavLink>
-        <NavLink to="/superadmin/settings" className="nav-link">
-          <span>⚙️</span> Minutas
+        <NavLink to="/superadmin/users" className="nav-link">
+          <span>👤</span> Usuarios
         </NavLink>
         <NavLink to="/superadmin/residents" className="nav-link">
           <span>👥</span> Residentes
-        </NavLink>
-        <NavLink to="/superadmin/visitors" className="nav-link">
-          <span>🚗</span> Visitantes
         </NavLink>
         <NavLink to="/superadmin/roundsaudits" className="nav-link">
           <span>🛡️</span> Rondas

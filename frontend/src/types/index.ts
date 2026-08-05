@@ -6,6 +6,24 @@ export interface User {
   email: string;
   role: UserRole;
   tenantId: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface CreateUserInput {
+  tenantId: string;
+  fullName: string;
+  email: string;
+  password: string;
+  role: Exclude<UserRole, 'SUPERADMIN'>;
+}
+
+export interface UpdateUserInput {
+  tenantId?: string;
+  fullName?: string;
+  email?: string;
+  password?: string;
+  role?: Exclude<UserRole, 'SUPERADMIN'>;
 }
 
 export interface LoginPayload {
@@ -82,6 +100,26 @@ export interface CreateResidentInput {
   email: string;
   phone?: string;
   apartmentId: string;  // 👈 Ahora el frontend envía obligatoriamente el UUID seleccionado
+}
+
+export interface CreateApartmentInput {
+  number: string;
+  block?: string;
+  tenantId: string;
+}
+
+export interface CreateParkingSpotInput {
+  number: string;
+  tenantId: string;
+  apartmentId?: string;
+}
+
+export interface CreateVehicleInput {
+  plate: string;
+  brand?: string;
+  color?: string;
+  tenantId: string;
+  parkingSpotId?: string;
 }
 
 export type VisitorStatus = 'PENDING' | 'IN' | 'OUT' | 'DENIED';
