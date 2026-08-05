@@ -204,7 +204,7 @@ export default function TenantsManagement() {
       });
       return data;
     },
-    onSuccess: (_, variables) => {
+    onSuccess: (_) => {
       if (selectedTenantForImages) {
         fetchExistingImages(selectedTenantForImages.id);
       }
