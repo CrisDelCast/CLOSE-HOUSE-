@@ -99,7 +99,14 @@ export interface CreateResidentInput {
   documentId: string;
   email: string;
   phone?: string;
-  apartmentId: string;  // 👈 Ahora el frontend envía obligatoriamente el UUID seleccionado
+  apartmentId: string;
+}
+
+export interface BulkUploadResult {
+  success: boolean;
+  message: string;
+  recordsCount?: number;
+  errors?: string[];
 }
 
 export interface CreateApartmentInput {

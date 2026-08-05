@@ -7,12 +7,16 @@ import {
   createParkingSpot,
   createVehicle,
 } from '../../api/apartments';
-import { createResident } from '../../api/residents';
+import { createResident, uploadResidentsBulk } from '../../api/residents';
 import { useAuthContext } from '../../context/AuthContext';
 import type { Tenant, Apartment } from '../../types';
 import styles from './ResidentsPage.module.css';
 
 type ModalView = 'unit' | 'detail' | 'add-resident' | 'add-vehicle';
+
+interface ResidentsPageProps {
+  mode?: 'superadmin' | 'admin';
+}
 
 const RESIDENT_FIELD_LABELS: Record<string, string> = {
   id: 'ID',
@@ -34,16 +38,24 @@ const VEHICLE_FIELD_LABELS: Record<string, string> = {
   parkingSpotId: 'Parqueadero',
 };
 
-const ResidentsPage = () => {
+const ResidentsPage = ({ mode = 'superadmin' }: ResidentsPageProps) => {
+  const isAdminMode = mode === 'admin';
   const queryClient = useQueryClient();
-  const { switchTenant } = useAuthContext();
+  const { switchTenant, user, tenantSlug } = useAuthContext();
 
-  const { data: tenants } = useQuery({ queryKey: ['tenants'], queryFn: fetchTenants });
+  const { data: tenants } = useQuery({
+    queryKey: ['tenants'],
+    queryFn: fetchTenants,
+    enabled: !isAdminMode,
+  });
   const [activeTenantId, setActiveTenantId] = useState<string>('');
   const [selectedApto, setSelectedApto] = useState<Apartment | null>(null);
   const [modalView, setModalView] = useState<ModalView>('unit');
   const [infoDetail, setInfoDetail] = useState<{ type: 'resident' | 'vehicle'; data: Record<string, unknown> } | null>(null);
   const [showCreateAptoModal, setShowCreateAptoModal] = useState(false);
+  const [showBulkUploadModal, setShowBulkUploadModal] = useState(false);
+  const [bulkFile, setBulkFile] = useState<File | null>(null);
+  const [bulkResult, setBulkResult] = useState<{ message: string; errors?: string[] } | null>(null);
   const [feedback, setFeedback] = useState('');
   const [formError, setFormError] = useState('');
 
@@ -65,16 +77,18 @@ const ResidentsPage = () => {
   const safeTenants: Tenant[] = Array.isArray(tenants) ? tenants : [];
 
   useEffect(() => {
-    if (safeTenants.length > 0 && !activeTenantId) {
+    if (isAdminMode && user?.tenantId) {
+      setActiveTenantId(user.tenantId);
+    } else if (!isAdminMode && safeTenants.length > 0 && !activeTenantId) {
       setActiveTenantId(safeTenants[0].id);
     }
-  }, [safeTenants, activeTenantId]);
+  }, [isAdminMode, user?.tenantId, safeTenants, activeTenantId]);
 
   useEffect(() => {
-    if (activeTenantId) {
+    if (!isAdminMode && activeTenantId) {
       switchTenant(activeTenantId);
     }
-  }, [activeTenantId, switchTenant]);
+  }, [activeTenantId, switchTenant, isAdminMode]);
 
   const { data: apartments, isLoading: isLoadingAptos } = useQuery({
     queryKey: ['apartments-details', activeTenantId],
@@ -109,7 +123,8 @@ const ResidentsPage = () => {
   });
 
   const createResidentMutation = useMutation({
-    mutationFn: (data: Parameters<typeof createResident>[0]) => createResident(data, activeTenantId),
+    mutationFn: (data: Parameters<typeof createResident>[0]) =>
+      createResident(data, isAdminMode ? undefined : activeTenantId),
     onSuccess: (newResident) => {
       invalidateApartments();
       setSelectedApto((prev) =>
@@ -166,6 +181,20 @@ const ResidentsPage = () => {
       if (refreshed) setSelectedApto(refreshed);
     },
     onError: (error) => setFormError(extractErrorMessage(error)),
+  });
+
+  const bulkUploadMutation = useMutation({
+    mutationFn: (file: File) =>
+      uploadResidentsBulk(file, isAdminMode ? undefined : activeTenantId),
+    onSuccess: (result) => {
+      invalidateApartments();
+      setBulkResult({ message: result.message, errors: result.errors });
+      if (result.success) {
+        setFeedback(result.message);
+        setBulkFile(null);
+      }
+    },
+    onError: (error) => setBulkResult({ message: extractErrorMessage(error) }),
   });
 
   const handleTenantChange = (tenantId: string) => {
@@ -241,38 +270,68 @@ const ResidentsPage = () => {
 
   const existingParkingSpots = selectedApto?.parkingSpots ?? [];
   const isSubmitting =
-    createAptoMutation.isPending || createResidentMutation.isPending || createVehicleMutation.isPending;
+    createAptoMutation.isPending ||
+    createResidentMutation.isPending ||
+    createVehicleMutation.isPending ||
+    bulkUploadMutation.isPending;
+
+  const activeTenantName = isAdminMode
+    ? tenantSlug ?? 'tu conjunto'
+    : safeTenants.find((t) => t.id === activeTenantId)?.name ?? '';
 
   return (
     <div className={styles.pageWrapper}>
       <div className={styles.tenantSwitcherContainer}>
         <div className={styles.headerRow}>
           <h3>Gestión de Unidades</h3>
-          {activeTenantId && (
-            <button
-              type="button"
-              className={styles.primaryBtn}
-              onClick={() => {
-                setShowCreateAptoModal(true);
-                setFormError('');
-                setAptoForm({ block: '', number: '' });
-              }}
-            >
-              + Crear apartamento
-            </button>
-          )}
+          <div className={styles.headerActions}>
+            {isAdminMode && (
+              <button
+                type="button"
+                className={styles.secondaryBtn}
+                onClick={() => {
+                  setShowBulkUploadModal(true);
+                  setBulkResult(null);
+                  setBulkFile(null);
+                }}
+              >
+                📤 Carga masiva
+              </button>
+            )}
+            {activeTenantId && (
+              <button
+                type="button"
+                className={styles.primaryBtn}
+                onClick={() => {
+                  setShowCreateAptoModal(true);
+                  setFormError('');
+                  setAptoForm({ block: '', number: '' });
+                }}
+              >
+                + Crear apartamento
+              </button>
+            )}
+          </div>
         </div>
-        <select
-          value={activeTenantId}
-          onChange={(e) => handleTenantChange(e.target.value)}
-          className={styles.tenantSelect}
-        >
-          {safeTenants.map((t) => (
-            <option key={t.id} value={t.id}>
-              {t.name}
-            </option>
-          ))}
-        </select>
+
+        {isAdminMode ? (
+          <p className={styles.tenantLabel}>
+            Conjunto: <strong>{activeTenantName}</strong>
+          </p>
+        ) : (
+          <select
+            value={activeTenantId}
+            onChange={(e) => handleTenantChange(e.target.value)}
+            className={styles.tenantSelect}
+          >
+            {safeTenants.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
+              </option>
+            ))}
+          </select>
+        )}
+
         {feedback && <p className={styles.feedback}>{feedback}</p>}
       </div>
 
@@ -335,6 +394,60 @@ const ResidentsPage = () => {
                 {createAptoMutation.isPending ? 'Guardando...' : 'Registrar apartamento'}
               </button>
             </form>
+          </div>
+        </div>
+      )}
+
+      {showBulkUploadModal && (
+        <div className={styles.modalOverlay} onClick={() => setShowBulkUploadModal(false)}>
+          <div className={styles.modalContent} onClick={(e) => e.stopPropagation()}>
+            <button type="button" className={styles.closeBtn} onClick={() => setShowBulkUploadModal(false)}>
+              ✕
+            </button>
+            <h2 className={styles.modalTitle}>Carga masiva de residentes</h2>
+            <p className={styles.bulkHint}>
+              Sube un archivo Excel (.xlsx) con las columnas en este orden:
+            </p>
+            <ol className={styles.bulkColumns}>
+              <li>Nombre completo</li>
+              <li>Documento</li>
+              <li>Bloque / Torre (dejar vacío si no aplica)</li>
+              <li>Número de apartamento</li>
+              <li>Teléfono (opcional)</li>
+              <li>Correo (opcional)</li>
+            </ol>
+            <p className={styles.bulkHint}>
+              La primera fila se considera encabezado. Los apartamentos deben existir previamente en el sistema.
+            </p>
+            <input
+              type="file"
+              accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+              className={styles.fileInput}
+              onChange={(e) => {
+                setBulkFile(e.target.files?.[0] ?? null);
+                setBulkResult(null);
+              }}
+            />
+            {bulkResult && (
+              <div className={bulkResult.errors?.length ? styles.bulkWarning : styles.feedback}>
+                <p>{bulkResult.message}</p>
+                {bulkResult.errors && bulkResult.errors.length > 0 && (
+                  <ul className={styles.errorList}>
+                    {bulkResult.errors.map((err) => (
+                      <li key={err}>{err}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
+            <button
+              type="button"
+              className={styles.primaryBtn}
+              disabled={!bulkFile || bulkUploadMutation.isPending}
+              onClick={() => bulkFile && bulkUploadMutation.mutate(bulkFile)}
+            >
+              {bulkUploadMutation.isPending ? 'Procesando...' : 'Subir archivo'}
+            </button>
           </div>
         </div>
       )}

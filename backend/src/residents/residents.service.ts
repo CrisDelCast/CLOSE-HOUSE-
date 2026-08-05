@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import * as ExcelJS from 'exceljs';
 import { TenantsService } from '../tenants/tenants.service';
 import { CreateResidentDto } from './dto/create-resident.dto';
 import { Resident } from './entities/resident.entity';
@@ -32,61 +33,58 @@ export class ResidentsService {
   async findAll(tenantId: string) {
     return this.residentRepository.find({
       where: { tenantId },
-      relations: ['apartment'], // 👈 Trae la info del apto mapeada en lugar de texto plano
+      relations: ['apartment'],
       order: { fullName: 'ASC' },
     });
   }
 
- /* // 3. ✨ MÉTODO REFRACTORIZADO: Carga masiva adaptada al modelo relacional
   async processBulkUpload(tenantId: string, file: Express.Multer.File) {
     await this.tenantsService.findById(tenantId);
 
     const workbook = new ExcelJS.Workbook();
-    await workbook.xlsx.load(file.buffer as any);
+    await workbook.xlsx.load(file.buffer as unknown as ArrayBuffer);
 
     const worksheet = workbook.getWorksheet(1);
-    if (!worksheet) { 
+    if (!worksheet) {
       throw new BadRequestException('No se pudo leer la hoja de cálculo.');
     }
 
-    // ⚡ Optimización PRO: Traemos todos los apartamentos del Tenant a memoria de una sola vez
-    // Esto evita hacer un query a la base de datos por cada fila del Excel (patrón anti-target N+1)
     const apartments = await this.apartmentRepository.find({ where: { tenantId } });
-    
-    // Creamos un mapa indexado por "Bloque-Numero" (ej: "Torre A-101") para buscar en O(1)
+
     const apartmentMap = new Map<string, string>();
-    apartments.forEach(apto => {
-      const key = `${apto.block.trim().toUpperCase()}-${apto.number.trim().toUpperCase()}`;
-      apartmentMap.set(key, apto.id);
+    apartments.forEach((apto) => {
+      const blockKey = (apto.block ?? '').trim().toUpperCase();
+      const numberKey = apto.number.trim().toUpperCase();
+      apartmentMap.set(`${blockKey}-${numberKey}`, apto.id);
     });
 
     const residentsToInsert: Partial<Resident>[] = [];
     const errors: string[] = [];
 
     worksheet.eachRow((row, rowNumber) => {
-      if (rowNumber === 1) return; // Omitir encabezados
+      if (rowNumber === 1) return;
 
       const fullName = row.getCell(1).text?.trim();
       const documentId = row.getCell(2).text?.trim();
-      const block = row.getCell(3).text?.trim();  // Ej: "Torre A"
-      const unitNumber = row.getCell(4).text?.trim(); // Ej: "101"
-      const phone = row.getCell(5).text?.trim() || null;
-      const email = row.getCell(6).text?.trim() || null;
+      const block = row.getCell(3).text?.trim() ?? '';
+      const unitNumber = row.getCell(4).text?.trim();
+      const phone = row.getCell(5).text?.trim() || undefined;
+      const email = row.getCell(6).text?.trim() || undefined;
 
-      if (!fullName || !documentId || !block || !unitNumber) {
-        if (fullName || documentId) {
-          errors.push(`Fila ${rowNumber}: Datos incompletos (Faltan campos obligatorios).`);
+      if (!fullName || !documentId || !unitNumber) {
+        if (fullName || documentId || unitNumber) {
+          errors.push(`Fila ${rowNumber}: Datos incompletos (nombre, documento y número de apto son obligatorios).`);
         }
         return;
       }
 
-      // Generamos la llave para buscar el apartamento en nuestro mapa en memoria
       const aptoKey = `${block.toUpperCase()}-${unitNumber.toUpperCase()}`;
       const apartmentId = apartmentMap.get(aptoKey);
 
-      // 🛑 Si el apartamento no existe en la BD, no podemos meter al residente
       if (!apartmentId) {
-        errors.push(`Fila ${rowNumber}: El apartamento "${unitNumber}" en el bloque "${block}" no existe en el sistema.`);
+        errors.push(
+          `Fila ${rowNumber}: El apartamento "${unitNumber}"${block ? ` en el bloque "${block}"` : ''} no existe en el sistema.`,
+        );
         return;
       }
 
@@ -94,7 +92,7 @@ export class ResidentsService {
         tenantId,
         fullName,
         documentId,
-        apartmentId, // 👈 Insertamos el UUID real indexado
+        apartmentId,
         phone,
         email,
       });
@@ -103,12 +101,11 @@ export class ResidentsService {
     if (residentsToInsert.length === 0) {
       return {
         success: false,
-        message: 'No se procesó ningún registro.',
+        message: 'No se procesó ningún registro válido.',
         errors,
       };
     }
 
-    // Insertar en bloque de forma masiva
     await this.residentRepository
       .createQueryBuilder()
       .insert()
@@ -120,7 +117,7 @@ export class ResidentsService {
       success: true,
       message: `Carga masiva finalizada. Se registraron ${residentsToInsert.length} residentes con éxito.`,
       recordsCount: residentsToInsert.length,
-      errors: errors.length > 0 ? errors : undefined, // Te devuelve qué filas fallaron por si el admin escribió mal un apto
+      errors: errors.length > 0 ? errors : undefined,
     };
-  }*/
+  }
 }

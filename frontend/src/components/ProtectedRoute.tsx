@@ -23,7 +23,7 @@ const ProtectedRoute = ({ allowedRoles }: ProtectedRouteProps) => {
     
   // Si la ruta pide roles específicos y el usuario no los tiene, lo saca
   if (allowedRoles && allowedRoles.length > 0 && !allowedRoles.includes(user.role)) {
-    return <Navigate to="/residents" replace />; 
+    return <Navigate to="/" replace />;
   }
 
   return <Outlet />;

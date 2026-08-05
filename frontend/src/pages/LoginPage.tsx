@@ -25,7 +25,7 @@ const LoginPage = () => {
       } else if (user.role === 'PORTERO') {
         navigate('/rounds', { replace: true });
       } else if (user.role === 'ADMIN') {
-        navigate('/residents', { replace: true });
+        navigate('/admin/residents', { replace: true });
       } else {
         navigate('/', { replace: true });
       }

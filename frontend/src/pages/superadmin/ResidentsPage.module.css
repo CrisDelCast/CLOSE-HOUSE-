@@ -19,6 +19,69 @@
   margin: 0;
 }
 
+.headerActions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.secondaryBtn {
+  background: transparent;
+  color: #D4AF37;
+  border: 1px solid rgba(212, 175, 55, 0.4);
+  padding: 10px 16px;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.tenantLabel {
+  color: #888;
+  font-size: 14px;
+  margin: 0 0 8px;
+}
+
+.tenantLabel strong {
+  color: #D4AF37;
+}
+
+.bulkHint {
+  font-size: 13px;
+  color: #aaa;
+  margin: 0 0 10px;
+}
+
+.bulkColumns {
+  font-size: 13px;
+  color: #ccc;
+  margin: 0 0 16px 20px;
+  line-height: 1.6;
+}
+
+.fileInput {
+  margin-bottom: 16px;
+  color: #ccc;
+  font-size: 13px;
+}
+
+.bulkWarning {
+  margin-bottom: 16px;
+  padding: 12px;
+  background: rgba(255, 107, 107, 0.08);
+  border: 1px solid rgba(255, 107, 107, 0.3);
+  border-radius: 8px;
+  font-size: 13px;
+  color: #ffaaaa;
+}
+
+.errorList {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  max-height: 160px;
+  overflow-y: auto;
+}
+
 .tenantSelect {
   width: 100%;
   max-width: 420px;
