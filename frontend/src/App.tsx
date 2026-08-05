@@ -63,7 +63,6 @@ function App() {
         {/* 👑 AREA GLOBAL: Exclusiva de SUPERADMIN */}
         <Route element={<ProtectedRoute allowedRoles={['SUPERADMIN']} />}>
           <Route path="superadmin" element={<SuperAdminLayout />}>
-            <Route index element={<Navigate to="dashboard" replace />} />
             <Route path="tenants" element={<TenantsManagement />} />
             <Route path="users" element={<UsersManagement />} />
             <Route path="residents" element={<ResidentsPage />} />
