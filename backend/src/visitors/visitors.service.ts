@@ -50,10 +50,49 @@ export class VisitorsService {
 
     const savedVisitor = await this.visitorRepository.save(visitor);
 
-    this.notifyVisit(resident, savedVisitor).catch((error) => {
-      this.logger.warn(
-        `La visita se creó pero falló la notificación: ${error instanceof Error ? error.message : String(error)}`,
-      );
+    // 🌐 Detecta automáticamente si está en local (Ngrok) o en producción (Railway) mediante la variable de entorno
+    const backendUrl = process.env.BACKEND_URL || 'https://motivated-kindness-production-e60a.up.railway.app';
+
+    const htmlContent = `
+      <div style="font-family: Arial, sans-serif; padding: 20px; background-color: #f4f4f5; border-radius: 8px; color: #18181b;">
+        <h2 style="color: #27272a; margin-top: 0;">Solicitud de Ingreso de Visitante</h2>
+        <p>Se ha registrado un visitante en portería:</p>
+        
+        <div style="background: #ffffff; padding: 15px; border-radius: 6px; border: 1px solid #e4e4e7; margin: 15px 0;">
+          <p style="margin: 5px 0;"><strong>Nombre:</strong> ${visitor.fullName}</p>
+          <p style="margin: 5px 0;"><strong>Documento:</strong> ${visitor.documentType} - ${visitor.documentId}</p>
+          <p style="margin: 5px 0;"><strong>Propósito:</strong> ${visitor.purpose || 'No especificado'}</p>
+          <p style="margin: 5px 0;"><strong>Vehículo (Placa):</strong> ${visitor.vehiclePlate || 'Ingreso peatonal'}</p>
+        </div>
+
+        <p style="text-align: center; font-weight: bold; margin: 20px 0 10px 0;">Por favor, seleccione una opción:</p>
+        
+        <div style="text-align: center;">
+          <a href="${backendUrl}/api/visitors/respond?id=${savedVisitor.id}&action=APPROVED" 
+             style="background-color: #16a34a; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block; margin-right: 10px;">
+            ✅ Aprobar Acceso
+          </a>
+          
+          <a href="${backendUrl}/api/visitors/respond?id=${savedVisitor.id}&action=DENIED" 
+             style="background-color: #dc2626; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">
+            ❌ No Aprobar
+          </a>
+        </div>
+        
+        <p style="font-size: 11px; color: #71717a; text-align: center; margin-top: 25px;">
+          Este es un correo automático generado por el sistema de control de portería.
+        </p>
+      </div>
+    `;
+
+    this.notificationsService.notifyApartmentResidents(
+      [{ email: resident.email, fullName: resident.fullName }],
+      `👤 Autorización Requerida: Visitante ${visitor.fullName} (${visitor.purpose || 'Visita'})`,
+      'Solicitud de ingreso de visitante pendiente de aprobación.',
+      htmlContent,
+      true
+    ).catch((error) => {
+      this.logger.warn(`Error enviando correo de notificación de visita: ${error.message}`);
     });
 
     return savedVisitor;

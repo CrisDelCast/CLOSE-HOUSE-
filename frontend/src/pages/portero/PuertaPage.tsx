@@ -1,6 +1,171 @@
 import { useState, useEffect } from 'react';
 import axios from '../../api/axios';
 
+
+// ==========================================
+// COMPONENTE: OBSERVADOR FLOTANTE DE APROBACIONES
+// ==========================================
+function LiveApprovalWatcher({ tenantId }: { tenantId: string | null }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [recentApprovals, setRecentApprovals] = useState<any[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  const checkApprovals = async () => {
+    if (!tenantId) return;
+    try {
+      // 1. Consultamos en paralelo los visitantes (estado IN) y contratistas (estado APPROVED)
+      const [visitorsRes, contractorsRes] = await Promise.all([
+        axios.get('/api/visitors', { 
+          params: { status: 'IN' }, 
+          headers: { 'x-tenant-id': tenantId } 
+        }).catch(() => ({ data: [] })),
+        
+        axios.get('/api/contractors-access', { 
+          headers: { 'x-tenant-id': tenantId } 
+        }).catch(() => ({ data: [] }))
+      ]);
+
+      // Filtramos los contratistas que estén aprobados (según tu entidad ContractorStatus)
+      const approvedContractors = (contractorsRes.data || []).filter(
+        (item: any) => item.status === 'APPROVED'
+      );
+
+      // Unimos ambos resultados en una sola lista para el monitor flotante
+      const approvedItems = [
+        ...(visitorsRes.data || []),
+        ...approvedContractors
+      ];
+      
+      // Si hay más elementos aprobados que antes, lanzamos la alerta sonora y sumamos el contador
+      if (approvedItems.length > recentApprovals.length) {
+        const diff = approvedItems.length - recentApprovals.length;
+        setUnreadCount(prev => prev + diff);
+        setAudioAlert();
+      }
+      
+      setRecentApprovals(approvedItems);
+    } catch (err) {
+      console.error('Error al monitorear aprobaciones:', err);
+    }
+  };
+
+
+  useEffect(() => {
+    if (!tenantId) return;
+    
+    checkApprovals();
+    const interval = setInterval(checkApprovals, 5000);
+    
+    return () => clearInterval(interval);
+  }, [tenantId, recentApprovals.length]);
+
+  const setAudioAlert = () => {
+    try {
+      const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3'); // O tu referencia al elemento HTMLAudioElement
+      audio.play().catch((error) => {
+        // El navegador bloqueó el autoplay porque el usuario aún no interactúa con la página
+        console.warn('Audio autoplay bloqueado por el navegador hasta la primera interacción:', error);
+      });
+    } catch (err) {
+      console.error('Error al intentar reproducir el sonido de alerta:', err);
+    }
+  };
+
+  return (
+    <div style={{ position: 'fixed', bottom: '30px', right: '30px', zIndex: 9999, fontFamily: 'sans-serif' }}>
+      
+      {isOpen && (
+        <div style={{
+          width: '320px',
+          background: 'rgba(22, 22, 26, 0.98)',
+          border: '1px solid #D4AF37',
+          borderRadius: '16px',
+          boxShadow: '0 15px 40px rgba(0,0,0,0.8)',
+          marginBottom: '14px',
+          overflow: 'hidden',
+          color: '#ffffff'
+        }}>
+          <div style={{ background: '#1c1c21', padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #2e2e33' }}>
+            <span style={{ fontSize: '13px', fontWeight: 'bold', color: '#D4AF37' }}>💬 Aprobaciones de Residentes</span>
+            <button 
+              onClick={() => setIsOpen(false)} 
+              style={{ background: 'none', border: 'none', color: '#a3a3a3', cursor: 'pointer', fontSize: '14px' }}>
+              ✕
+            </button>
+          </div>
+
+          <div style={{ maxHeight: '240px', overflowY: 'auto', padding: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {recentApprovals.length === 0 ? (
+              <p style={{ fontSize: '12px', color: '#a3a3a3', textAlign: 'center', margin: '20px 0' }}>
+                No hay autorizaciones recientes.
+              </p>
+            ) : (
+              recentApprovals.map((item: any) => (
+                <div key={item.id || item._id} style={{ background: 'rgba(212, 175, 55, 0.05)', border: '1px solid rgba(212, 175, 55, 0.2)', padding: '10px', borderRadius: '8px', fontSize: '12px' }}>
+                  <span style={{ color: '#4ade80', fontWeight: 'bold' }}>✓ Acceso Aprobado</span>
+                  <p style={{ margin: '4px 0 0 0', color: '#e5e5e5' }}>
+                    <strong>{item.fullName}</strong> autorizado por el residente.
+                  </p>
+                  <span style={{ fontSize: '10px', color: '#737373', display: 'block', marginTop: '4px' }}>
+                    {item.purpose ? `Propósito: ${item.purpose}` : 'Ingreso peatonal / contratista'}
+                  </span>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+
+      <button 
+        onClick={() => {
+          setIsOpen(!isOpen);
+          setUnreadCount(0);
+        }}
+        style={{
+          width: '60px',
+          height: '60px',
+          borderRadius: '50%',
+          background: '#D4AF37',
+          color: '#0c0c0e',
+          border: 'none',
+          boxShadow: '0 4px 20px rgba(212, 175, 55, 0.4)',
+          cursor: 'pointer',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          fontSize: '24px',
+          position: 'relative',
+          transition: 'transform 0.2s'
+        }}
+        title="Ver estado de aprobaciones"
+      >
+        🛡️
+        {unreadCount > 0 && (
+          <span style={{
+            position: 'absolute',
+            top: '-4px',
+            right: '-4px',
+            background: '#ef4444',
+            color: '#ffffff',
+            fontSize: '11px',
+            fontWeight: 'bold',
+            width: '22px',
+            height: '22px',
+            borderRadius: '50%',
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            border: '2px solid #0c0c0e'
+          }}>
+            {unreadCount}
+          </span>
+        )}
+      </button>
+
+    </div>
+  );
+}
+
 export default function PuertaDashboard() {
   // Estados para controlar los modales (añadido 'visitor')
   const [activeModal, setActiveModal] = useState<'vehicle' | 'correspondence' | 'contractor' | 'visitor' | null>(null);
@@ -361,10 +526,10 @@ export default function PuertaDashboard() {
     e.preventDefault();
     setVisitorLoading(true);
     setVisitorMessage('');
-
+  
     try {
       const tenantId = getTenantId();
-
+  
       const payload: any = {
         fullName: visitorForm.fullName,
         documentType: visitorForm.documentType,
@@ -372,72 +537,20 @@ export default function PuertaDashboard() {
         apartmentId: visitorForm.apartmentId,
         tenantId: tenantId,
       };
-
+  
       if (visitorForm.residentId) payload.residentId = visitorForm.residentId;
       if (visitorForm.phone) payload.phone = visitorForm.phone;
       if (visitorForm.vehiclePlate) payload.vehiclePlate = visitorForm.vehiclePlate;
       if (visitorForm.purpose) payload.purpose = visitorForm.purpose;
       if (visitorForm.notes) payload.notes = visitorForm.notes;
-
-      const responseVisitor = await axios.post('/api/visitors', payload, {
+  
+      // 🚀 Única petición necesaria: el backend se encarga de guardar y enviar el correo HTML
+      await axios.post('/api/visitors', payload, {
         headers: {
           'x-tenant-id': tenantId,
         },
       });
-
-      const newVisitorId = responseVisitor.data.id || responseVisitor.data._id;
-
-      const selectedApt = tenantApartments.find(apt => (apt.id || apt._id) === visitorForm.apartmentId);
-      const aptNumberStr = selectedApt ? `Apto ${selectedApt.number}` : 'su apartamento';
-
-      const selectedResident = apartmentResidents.find(res => (res.id || res._id) === visitorForm.residentId);
-      const residentEmail = selectedResident ? selectedResident.email : null;
-
-      // Detecta automáticamente si estás corriendo de forma local o en producción
-      const isLocalDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-      const ngrokUrl = 'https://starlit-handball-chief.ngrok-free.dev'; 
-      const railwayUrl = import.meta.env.VITE_BACKEND_URL || 'https://motivated-kindness-production-e60a.up.railway.app'; 
-      const backendUrl = isLocalDev ? ngrokUrl : railwayUrl;
-
-      await axios.post('/api/properties/send-alert', {
-        apartmentId: visitorForm.apartmentId,
-        email: residentEmail,
-        isHtml: true, 
-        subject: `👤 Autorización Requerida: Visitante ${visitorForm.fullName} (${visitorForm.purpose || 'Visita'})`,
-        message: 'Solicitud de ingreso de visitante pendiente de aprobación.',
-        htmlContent: `
-          <div style="font-family: Arial, sans-serif; padding: 20px; background-color: #f4f4f5; border-radius: 8px; color: #18181b;">
-            <h2 style="color: #27272a; margin-top: 0;">Solicitud de Ingreso de Visitante</h2>
-            <p>Se ha registrado un visitante en portería para su apartamento <strong>(${aptNumberStr})</strong>:</p>
-            
-            <div style="background: #ffffff; padding: 15px; border-radius: 6px; border: 1px solid #e4e4e7; margin: 15px 0;">
-              <p style="margin: 5px 0;"><strong>Nombre:</strong> ${visitorForm.fullName}</p>
-              <p style="margin: 5px 0;"><strong>Documento:</strong> ${visitorForm.documentType} - ${visitorForm.documentId}</p>
-              <p style="margin: 5px 0;"><strong>Propósito:</strong> ${visitorForm.purpose || 'No especificado'}</p>
-              <p style="margin: 5px 0;"><strong>Vehículo (Placa):</strong> ${visitorForm.vehiclePlate || 'Ingreso peatonal'}</p>
-            </div>
   
-            <p style="text-align: center; font-weight: bold; margin: 20px 0 10px 0;">Por favor, seleccione una opción:</p>
-            
-            <div style="text-align: center;">
-              <a href="${backendUrl}/api/visitors/respond?id=${newVisitorId}&action=APPROVED" 
-                 style="background-color: #16a34a; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block; margin-right: 10px;">
-                ✅ Aprobar Acceso
-              </a>
-              
-              <a href="${backendUrl}/api/visitors/respond?id=${newVisitorId}&action=DENIED" 
-                 style="background-color: #dc2626; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">
-                ❌ No Aprobar
-              </a>
-            </div>
-            
-            <p style="font-size: 11px; color: #71717a; text-align: center; margin-top: 25px;">
-              Este es un correo automático generado por el sistema de control de portería.
-            </p>
-          </div>
-        `
-      });
-
       setVisitorMessage('¡Visitante registrado y notificación enviada al residente con éxito!');
       setVisitorForm({
         fullName: '',
@@ -629,6 +742,8 @@ export default function PuertaDashboard() {
       <p style={{ color: '#a3a3a3', marginBottom: '30px', fontSize: '14px' }}>
         Bienvenido al panel general. Seleccione una opción para gestionar los controles de portería.
       </p>
+      {/* --- WATCHER DE APROBACIÓN DE VISITANTES --- */}
+      <LiveApprovalWatcher tenantId={getTenantId()} />
 
       {/* GRILLA DE BOTONES PRINCIPALES */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '20px' }}>
@@ -1191,6 +1306,7 @@ export default function PuertaDashboard() {
                   ))}
                 </select>
               </div>
+              
 
               {/* --- VISUALIZACIÓN DINÁMICA DE VISITANTES ACTIVOS DEL RESIDENTE SELECCIONADO CON BOTÓN DE CHECK-OUT --- */}
               {visitorForm.residentId && (
