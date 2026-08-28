@@ -39,9 +39,7 @@ export default function RondaDashboard() {
   const [controlPoints, setControlPoints] = useState<ControlPoint[]>([]);
   const [tenantImages, setTenantImages] = useState<LocationImage[]>([]);
   
-  // 📍 Estado para controlar qué punto fue cliqueado para ver sus imágenes
   const [selectedPointForModal, setSelectedPointForModal] = useState<ControlPoint | null>(null);
-
   const [remainingTime, setRemainingTime] = useState<number | null>(null);
   
   const [abandonNotes, setAbandonNotes] = useState('');
@@ -51,7 +49,9 @@ export default function RondaDashboard() {
   const [isScanning, setIsScanning] = useState(false);
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
 
-  // 1. Cargar Puntos de Control
+  // 🏷️ Estado para saber si la cámara abrió para ronda normal o para una acción Master específica ('ENTRY' | 'EXIT')
+  const [activeMasterAction, setActiveMasterAction] = useState<'ENTRY' | 'EXIT' | null>(null);
+
   const fetchControlPoints = async () => {
     if (!tenantId) return;
     try {
@@ -63,7 +63,6 @@ export default function RondaDashboard() {
     }
   };
 
-  // 2. Cargar Imágenes del Tenant asociadas a los Checkpoints
   const fetchTenantImages = async () => {
     if (!tenantId) return;
     try {
@@ -114,13 +113,11 @@ export default function RondaDashboard() {
     }
   }, [tenantId, user]);
 
-  // ⏱️ Cuenta regresiva fija y global desde el inicio de la ronda
   useEffect(() => {
     if (!activeRound || activeRound.status !== 'IN_PROGRESS' || !activeRound.startedAt) return;
 
     const maxMinutes = activeRound.timeBetweenPoints ?? 10;
     const totalAllowedMs = maxMinutes * 60 * 1000;
-
     const referenceTime = new Date(activeRound.startedAt).getTime();
 
     const updateTimer = () => {
@@ -171,71 +168,103 @@ export default function RondaDashboard() {
     }
   };
 
-  // 📷 Ciclo de escaneo con gestión de COMPLETED
+  const isNextNormalPoint = (pointId: string) => {
+    const normalList = controlPoints.filter(p => {
+      const name = p.name.toUpperCase();
+      return !name.includes('MASTER') && !name.includes('EXTERNO');
+    });
+
+    const scannedIds = activeRound?.checks?.map(c => c.controlPoint?.id) || [];
+    const nextPoint = normalList.find(p => !scannedIds.includes(p.id));
+    return nextPoint ? nextPoint.id === pointId : false;
+  };
+
+  // 📷 Lógica del Scanner con redirección de endpoint según el contexto (Normal vs Master Entry/Exit)
   useEffect(() => {
     let scanner: Html5QrcodeScanner | null = null;
+    let timer: ReturnType<typeof setTimeout>;
 
     if (isScanning) {
-      scanner = new Html5QrcodeScanner(
-        "reader",
-        { 
-          fps: 10, 
-          qrbox: { width: 250, height: 250 },
-          rememberLastUsedCamera: true,
-          videoConstraints: { facingMode: "environment" }
-        },
-        false
-      );
+      timer = setTimeout(() => {
+        const container = document.getElementById("reader");  
+        if (!container) return;
 
-      const onScanSuccess = async (decodedText: string) => {
-        setStatusMessage({ type: 'info', text: 'Procesando lectura...' });
-        
-        if (scanner) {
-          scanner.clear().catch(() => {});
-        }
-        setIsScanning(false);
+        scanner = new Html5QrcodeScanner(
+          "reader",
+          { 
+            fps: 10, 
+            qrbox: { width: 250, height: 250 },
+            rememberLastUsedCamera: true,
+            videoConstraints: { facingMode: "environment" }
+          },
+          false
+        );
 
-        try {
-          const { data } = await axios.post('/api/rounds/scan', {
-            qrCodeToken: decodedText
-          });
-
-          if (data.roundCompleted) {
-            setActiveRound(null);
-            setStatusMessage({
-              type: 'success',
-              text: `🎉 ¡COMPLETADA! ${data.message || 'Has finalizado exitosamente todos los puntos de la ronda.'}`
-            });
-          } else {
-            setStatusMessage({
-              type: 'success',
-              text: `✅ ${data.message || 'Punto registrado con éxito'}`
-            });
-
-            if (data.round && data.round.id) {
-              setActiveRound(data.round);
-            } else {
-              await checkActiveRound(false);
+        const onScanSuccess = async (decodedText: string) => {
+          setStatusMessage({ type: 'info', text: 'Procesando lectura...' });
+          
+          if (scanner) {
+            try {
+              await scanner.clear();
+            } catch (e) {
+              console.error("Error al limpiar el scanner:", e);
             }
           }
+          setIsScanning(false);
 
-        } catch (err: any) {
-          setStatusMessage({
-            type: 'error',
-            text: err.response?.data?.message || 'Error al procesar el código QR.'
-          });
-        }
-      };
+          try {
+            let endpoint = '/api/rounds/scan';
+            if (activeMasterAction === 'ENTRY') {
+              endpoint = '/api/rounds/scan-master-entry'; // 👈 Endpoint dedicado para Ingreso
+            } else if (activeMasterAction === 'EXIT') {
+              endpoint = '/api/rounds/scan-master-exit';  // 👈 Endpoint dedicado para Salida
+            }
 
-      scanner.render(onScanSuccess, () => {});
+            const { data } = await axios.post(endpoint, { qrCodeToken: decodedText });
+
+            setActiveMasterAction(null);
+
+            if (data.roundCompleted) {
+              setActiveRound(null);
+              setStatusMessage({
+                type: 'success',
+                text: `🎉 ¡COMPLETADA! ${data.message || 'Has finalizado exitosamente todos los puntos de la ronda.'}`
+              });
+            } else {
+              setStatusMessage({
+                type: 'success',
+                text: `✅ ${data.message || 'Punto registrado con éxito'}`
+              });
+
+              if (data.round && data.round.id) {
+                setActiveRound(data.round);
+              } else {
+                await checkActiveRound(false);
+              }
+            }
+
+          } catch (err: any) {
+            setActiveMasterAction(null);
+            setStatusMessage({
+              type: 'error',
+              text: err.response?.data?.message || 'Error al procesar el código QR.'
+            });
+          }
+        };
+
+        scanner.render(onScanSuccess, () => {});
+      }, 100);
     }
 
     return () => {
+      clearTimeout(timer);
       if (scanner) {
-        scanner.clear().catch(() => {});
+        scanner.clear().catch((err) => {
+          console.error("Fallo al limpiar el scanner en unmount:", err);
+        });
       }
     };
-  }, [isScanning]);
+  }, [isScanning, activeMasterAction]);
 
   const isPointScanned = (pointId: string) => {
     if (!activeRound || !activeRound.checks) return false;
@@ -270,7 +299,6 @@ export default function RondaDashboard() {
     }
   ).length || 0;
 
-  // 🖼️ Filtrar la lista completa de imágenes asociadas al punto seleccionado
   const imagesForSelectedPoint = selectedPointForModal
     ? tenantImages.filter(img => img.checkpointId === selectedPointForModal.id)
     : [];
@@ -365,10 +393,15 @@ export default function RondaDashboard() {
         <div style={{ background: '#fff', borderRadius: '12px', padding: '16px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)', border: '1px solid #cbd5e1', marginBottom: '16px' }}>
           {isScanning ? (
             <div>
-              <h3 style={{ fontSize: '16px', color: '#334155', textAlign: 'center', marginTop: 0, marginBottom: '12px' }}>Apunta al código QR físico del punto</h3>
+              <h3 style={{ fontSize: '16px', color: '#334155', textAlign: 'center', marginTop: 0, marginBottom: '12px' }}>
+                {activeMasterAction === 'ENTRY' ? 'Escaneando QR para Ingreso' : activeMasterAction === 'EXIT' ? 'Escaneando QR para Salida' : 'Apunta al código QR físico del punto'}
+              </h3>
+              <div style={{ textAlign: 'center', padding: '12px 0', color: '#64748b', fontSize: '13px', fontStyle: 'italic' }}>
+                Iniciando cámara... Por favor otorga permisos si el navegador lo solicita.
+              </div>
               <div id="reader" style={{ width: '100%' }}></div>
               <button 
-                onClick={() => setIsScanning(false)}
+                onClick={() => { setIsScanning(false); setActiveMasterAction(null); }}
                 style={{ background: '#ef4444', color: '#fff', border: 'none', padding: '8px 16px', borderRadius: '6px', cursor: 'pointer', marginTop: '12px', width: '100%', fontWeight: 'bold' }}
               >
                 Cancelar Cámara
@@ -376,7 +409,7 @@ export default function RondaDashboard() {
             </div>
           ) : (
             <button 
-              onClick={() => { setStatusMessage(null); setIsScanning(true); }}
+              onClick={() => { setActiveMasterAction(null); setStatusMessage(null); setIsScanning(true); }}
               style={{ background: '#0f766e', color: '#fff', padding: '12px 24px', borderRadius: '8px', border: 'none', fontWeight: 'bold', fontSize: '16px', cursor: 'pointer', width: '100%' }}
             >
               📷 Abrir Cámara y Escanear Siguiente Punto
@@ -396,6 +429,7 @@ export default function RondaDashboard() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
               {normalPoints.map((point, index) => {
                 const completado = isPointScanned(point.id);
+                const esSiguiente = isNextNormalPoint(point.id);
                 const pointImages = tenantImages.filter(img => img.checkpointId === point.id);
                 const hasImages = pointImages.length > 0;
 
@@ -408,22 +442,21 @@ export default function RondaDashboard() {
                       alignItems: 'center', 
                       padding: '12px', 
                       borderRadius: '8px', 
-                      background: completado ? '#f0fdf4' : '#f8fafc',
-                      border: `1px solid ${completado ? '#bbf7d0' : '#e2e8f0'}`,
-                      cursor: 'pointer',
-                      transition: 'transform 0.1s ease',
+                      background: completado ? '#f0fdf4' : esSiguiente ? '#eff6ff' : '#f8fafc',
+                      border: `1px solid ${completado ? '#bbf7d0' : esSiguiente ? '#bfdbfe' : '#e2e8f0'}`,
+                      cursor: 'pointer'
                     }}
                   >
                     <div style={{ 
                       width: '24px', height: '24px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', marginRight: '12px', fontSize: '12px',
-                      background: completado ? '#22c55e' : '#cbd5e1', color: '#fff', fontWeight: 'bold'
+                      background: completado ? '#22c55e' : esSiguiente ? '#3b82f6' : '#cbd5e1', color: '#fff', fontWeight: 'bold'
                     }}>
                       {completado ? '✓' : index + 1}
                     </div>
 
                     <span style={{ 
-                      color: completado ? '#166534' : '#334155', 
-                      fontWeight: completado ? 'bold' : 'normal',
+                      color: completado ? '#166534' : esSiguiente ? '#1e40af' : '#334155', 
+                      fontWeight: completado || esSiguiente ? 'bold' : 'normal',
                       flex: 1
                     }}>
                       {point.name}
@@ -434,8 +467,8 @@ export default function RondaDashboard() {
                       )}
                     </span>
 
-                    <span style={{ fontSize: '12px', fontWeight: '600', color: completado ? '#15803d' : '#64748b' }}>
-                      {completado ? 'Completado' : 'Pendiente'}
+                    <span style={{ fontSize: '12px', fontWeight: '600', color: completado ? '#15803d' : esSiguiente ? '#2563eb' : '#64748b' }}>
+                      {completado ? 'Completado' : esSiguiente ? 'Siguiente' : 'Pendiente'}
                     </span>
                   </div>
                 );
@@ -446,12 +479,12 @@ export default function RondaDashboard() {
           {/* PUNTOS MASTER */}
           {masterPoints.length > 0 && (
             <div style={{ background: '#fff', borderRadius: '12px', padding: '20px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)', border: '1px solid #d946ef' }}>
-              <h3 style={{ color: '#86198f', margin: '0 0 8px 0', fontSize: '16px' }}>⭐ Punto Master (Comodín)</h3>
+              <h3 style={{ color: '#86198f', margin: '0 0 8px 0', fontSize: '16px' }}>⭐ Punto Master (Control de Acceso y Notificación)</h3>
               <p style={{ fontSize: '13px', color: '#701a75', marginTop: 0, marginBottom: '12px' }}>
-                Disponible para escanearse de forma independiente en cualquier momento.
+                Selecciona la acción para registrar Ingreso/Salida utilizando la cámara, o bien escanealo como parte normal de la ronda.
               </p>
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 {masterPoints.map((point) => {
                   const completado = isPointScanned(point.id);
                   const pointImages = tenantImages.filter(img => img.checkpointId === point.id);
@@ -460,37 +493,81 @@ export default function RondaDashboard() {
                   return (
                     <div 
                       key={point.id} 
-                      onClick={() => setSelectedPointForModal(point)}
                       style={{ 
                         display: 'flex', 
-                        alignItems: 'center', 
-                        justifyContent: 'space-between',
+                        flexDirection: 'column',
                         padding: '12px 16px', 
                         borderRadius: '8px', 
                         background: '#fdf4ff',
                         border: '1px dashed #d946ef',
-                        cursor: 'pointer'
+                        gap: '10px'
                       }}
                     >
-                      <div style={{ display: 'flex', alignItems: 'center' }}>
-                        <div style={{ 
-                          width: '28px', height: '28px', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center', marginRight: '12px', fontSize: '14px',
-                          background: '#d946ef', color: '#fff'
-                        }}>
-                          ⭐
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }} onClick={() => setSelectedPointForModal(point)}>
+                          <div style={{ 
+                            width: '28px', height: '28px', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center', marginRight: '12px', fontSize: '14px',
+                            background: '#d946ef', color: '#fff'
+                          }}>
+                            ⭐
+                          </div>
+                          <span style={{ color: '#86198f', fontWeight: 'bold', fontSize: '14px' }}>
+                            {point.name}
+                            {hasImages && (
+                              <span style={{ marginLeft: '6px', fontSize: '12px', background: '#f5d0fe', padding: '2px 6px', borderRadius: '10px' }}>
+                                📷 {pointImages.length}
+                              </span>
+                            )}
+                          </span>
                         </div>
-                        <span style={{ color: '#86198f', fontWeight: 'bold', fontSize: '14px' }}>
-                          {point.name}
-                          {hasImages && (
-                            <span style={{ marginLeft: '6px', fontSize: '12px', background: '#f5d0fe', padding: '2px 6px', borderRadius: '10px' }}>
-                              📷 {pointImages.length}
-                            </span>
-                          )}
+                        <span style={{ fontSize: '11px', background: '#fae8ff', color: '#a21caf', padding: '4px 8px', borderRadius: '4px', fontWeight: '600' }}>
+                          {completado ? 'Escaneado en la ronda' : 'Libre / Comodín'}
                         </span>
                       </div>
-                      <span style={{ fontSize: '11px', background: '#fae8ff', color: '#a21caf', padding: '4px 8px', borderRadius: '4px', fontWeight: '600' }}>
-                        {completado ? 'Escaneado en la ronda' : 'Libre / Comodín'}
-                      </span>
+
+                      {/* Botones independientes que configuran la ruta hacia su endpoint específico */}
+                      <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
+                        <button
+                          onClick={() => {
+                            setActiveMasterAction('ENTRY');
+                            setStatusMessage(null);
+                            setIsScanning(true);
+                          }}
+                          style={{
+                            flex: 1,
+                            background: '#15803d',
+                            color: '#fff',
+                            border: 'none',
+                            padding: '8px',
+                            borderRadius: '6px',
+                            fontWeight: 'bold',
+                            cursor: 'pointer',
+                            fontSize: '13px'
+                          }}
+                        >
+                          📥 Registrar Ingreso
+                        </button>
+                        <button
+                          onClick={() => {
+                            setActiveMasterAction('EXIT');
+                            setStatusMessage(null);
+                            setIsScanning(true);
+                          }}
+                          style={{
+                            flex: 1,
+                            background: '#b91c1c',
+                            color: '#fff',
+                            border: 'none',
+                            padding: '8px',
+                            borderRadius: '6px',
+                            fontWeight: 'bold',
+                            cursor: 'pointer',
+                            fontSize: '13px'
+                          }}
+                        >
+                          📤 Registrar Salida
+                        </button>
+                      </div>
                     </div>
                   );
                 })}
@@ -564,7 +641,7 @@ export default function RondaDashboard() {
         </div>
       )}
 
-      {/* 🖼️ MODAL / VISOR DE IMÁGENES DEL PUNTO SELECCIONADO */}
+      {/* 🖼️ MODAL / VISOR DE IMÁGENES */}
       {selectedPointForModal && (
         <div style={{
           position: 'fixed',

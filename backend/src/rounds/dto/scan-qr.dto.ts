@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsNotEmpty } from 'class-validator';
+import { IsString, IsOptional, IsNotEmpty, IsIn } from 'class-validator';
 
 export class ScanQrDto {
   @IsString()
@@ -8,4 +8,8 @@ export class ScanQrDto {
   @IsString()
   @IsOptional()
   notes?: string;
+
+  @IsOptional()
+  @IsIn(['INGRESO', 'SALIDA'])
+  readonly action?: 'INGRESO' | 'SALIDA';
 }

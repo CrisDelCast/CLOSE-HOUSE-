@@ -10,6 +10,7 @@ import { TenantRoundConfig } from '../tenants/entities/tenant-round-config.entit
 import { ControlPointsService } from './control-points.service';
 import { ControlPointsController } from './control-points.controller';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { Tenant } from '../tenants/entities/tenant.entity';
 
 
 @Module({
@@ -18,7 +19,8 @@ import { NotificationsModule } from '../notifications/notifications.module';
       GuardRound,
       GuardRoundCheck,
       TenantControlPoint,
-      TenantRoundConfig, // Asegúrate de incluir el de la config de tiempos
+      TenantRoundConfig,
+      Tenant // Asegúrate de incluir el de la config de tiempos
     ]),
     NotificationsModule,
   ],

@@ -72,7 +72,44 @@ export class RoundsController {
     return this.roundsService.scanPoint(userId, tenantId, scanQrDto);
   }
 
+  
+  /**
+   * 4. Registrar escaneo de Ingreso para el Punto Master
+   */
+  @Post('scan-master-entry')
+  @UseGuards(JwtAuthGuard)
+  async scanMasterEntry(
+    @Req() req: any,
+    @Body() scanQrDto: ScanQrDto,
+  ) {
+    const userId = req.user.sub || req.user.id;
+    const tenantId = req.user.tenantId;
 
+    if (!userId || !tenantId) {
+      throw new BadRequestException('No se pudo identificar la sesión del usuario.');
+    }
+
+    return this.roundsService.scanMasterAction(userId, tenantId, scanQrDto, 'INGRESO');
+  }
+
+  /**
+   * 5. Registrar escaneo de Salida para el Punto Master
+   */
+  @Post('scan-master-exit')
+  @UseGuards(JwtAuthGuard)
+  async scanMasterExit(
+    @Req() req: any,
+    @Body() scanQrDto: ScanQrDto,
+  ) {
+    const userId = req.user.sub || req.user.id;
+    const tenantId = req.user.tenantId;
+
+    if (!userId || !tenantId) {
+      throw new BadRequestException('No se pudo identificar la sesión del usuario.');
+    }
+
+    return this.roundsService.scanMasterAction(userId, tenantId, scanQrDto, 'SALIDA');
+  }
 
   @Get('tenant/:tenantId')
   async getCompletedRoundsByTenant(

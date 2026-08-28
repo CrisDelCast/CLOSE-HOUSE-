@@ -9,6 +9,7 @@ import { GuardRound } from './entities/guard-round.entity';
 import { GuardRoundCheck } from './entities/guard-round-check.entity';
 import { TenantControlPoint } from './entities/tenant-control-point.entity';
 import { NotificationsService } from '../notifications/notifications.service';
+import { Tenant } from '../tenants/entities/tenant.entity';
 
 @Injectable()
 export class RoundsService {
@@ -22,6 +23,9 @@ export class RoundsService {
     @InjectRepository(TenantRoundConfig)
     private readonly configRepo: Repository<TenantRoundConfig>,
     private readonly notificationsService: NotificationsService,
+    @InjectRepository(Tenant)
+    private readonly tenantRepository: Repository<Tenant>
+
   ) {}
 
   /**
@@ -95,7 +99,7 @@ export class RoundsService {
   /**
    * 3. Procesar escaneo QR con soporte para Punto Maestro y Puntos Externos (Máximo 2 visitas/día)
    */
-  async scanPoint(userId: string, tenantId: string, scanDto: ScanQrDto) {
+  async scanPoint(userId: string, tenantId: string, scanDto: ScanQrDto & { action?: 'INGRESO' | 'SALIDA' }) {
     const round = await this.getActiveRound(userId, tenantId);
     if (!round) {
       throw new BadRequestException('No tienes ninguna ronda activa en curso o tu ronda ha expirado.');
@@ -120,87 +124,90 @@ export class RoundsService {
       throw new BadRequestException('Configuración de rondas no definida para este conjunto.');
     }
 
-    // Ordenar marcaciones previas usando la secuencia de su punto de control (excluyendo externos y master si es necesario, o filtrando normales)
-    const checksDone = round.checks
-      .filter(c => {
-        const name = c.controlPoint?.name.toUpperCase() || '';
-        return !name.includes('MASTER') && !name.includes('EXTERNO');
-      })
-      .sort((a, b) => a.controlPoint.sequenceOrder - b.controlPoint.sequenceOrder);
-    
-    const nextExpectedOrder = checksDone.length + 1;
-
-    // 🔑 DETECCIÓN DE TIPOS DE PUNTO
     const isMaster = scannedPoint.name.toUpperCase().includes('MASTER');
     const isExternal = scannedPoint.name.toUpperCase().includes('EXTERNO');
     let targetPoint = scannedPoint;
 
-    if (isExternal) {
-      // Validar límite de 2 visitas diarias para puntos externos
-      const todayStart = new Date();
-      todayStart.setHours(0, 0, 0, 0);
-
-      const externalChecksTodayCount = await this.checkRepo
-        .createQueryBuilder('check')
-        .innerJoin('check.controlPoint', 'point')
-        .where('point.id = :pointId', { pointId: scannedPoint.id })
-        .andWhere('check.scannedAt >= :todayStart', { todayStart })
-        .andWhere('check.isValid = :isValid', { isValid: true })
-        .getCount();
-
-      if (externalChecksTodayCount >= 2) {
-        throw new BadRequestException(
-          `El punto externo "${scannedPoint.name}" ya ha cumplido con el límite de 2 visitas permitidas para el día de hoy.`
-        );
-      }
-
+    // 🛑 AISLAMIENTO CLAVE: Si es un Punto Master y trae una acción (Ingreso/Salida), 
+    // no validamos secuencia de ronda ni alteramos el orden de patrullaje.
+    if (isMaster && scanDto.action) {
+      // Usamos el punto Master directamente sin afectar el flujo de la ronda
       targetPoint = scannedPoint;
-
-    } else if (isMaster) {
-      const expectedPoint = await this.pointRepo.findOne({
-        where: { tenantId: tenantId, sequenceOrder: nextExpectedOrder }
-      });
-
-      if (!expectedPoint) {
-        throw new BadRequestException('No hay más puntos pendientes por completar en esta ronda.');
-      }
-
-      targetPoint = expectedPoint;
     } else {
-      // Validación 1: Verificar el orden secuencial normal del punto escaneado
-      if (scannedPoint.sequenceOrder !== nextExpectedOrder) {
+      // --- TU LÓGICA HABITUAL DE SECUENCIA PARA PUNTOS NORMALES, EXTERNOS Y MASTER DE RONDA ---
+      const checksDone = round.checks
+        .filter(c => {
+          const name = c.controlPoint?.name.toUpperCase() || '';
+          return !name.includes('MASTER') && !name.includes('EXTERNO');
+        })
+        .sort((a, b) => a.controlPoint.sequenceOrder - b.controlPoint.sequenceOrder);
+      
+      const nextExpectedOrder = checksDone.length + 1;
+
+      if (isExternal) {
+        const todayStart = new Date();
+        todayStart.setHours(0, 0, 0, 0);
+
+        const externalChecksTodayCount = await this.checkRepo
+          .createQueryBuilder('check')
+          .innerJoin('check.controlPoint', 'point')
+          .where('point.id = :pointId', { pointId: scannedPoint.id })
+          .andWhere('check.scannedAt >= :todayStart', { todayStart })
+          .andWhere('check.isValid = :isValid', { isValid: true })
+          .getCount();
+
+        if (externalChecksTodayCount >= 2) {
+          throw new BadRequestException(
+            `El punto externo "${scannedPoint.name}" ya ha cumplido con el límite de 2 visitas permitidas para el día de hoy.`
+          );
+        }
+
+        targetPoint = scannedPoint;
+      } else if (isMaster) {
         const expectedPoint = await this.pointRepo.findOne({
           where: { tenantId: tenantId, sequenceOrder: nextExpectedOrder }
         });
-        const expectedName = expectedPoint ? `"${expectedPoint.name}"` : `punto #${nextExpectedOrder}`;
-        
-        throw new BadRequestException(
-          `Orden incorrecto. Debes escanear el punto #${nextExpectedOrder}: ${expectedName}`
-        );
+
+        if (!expectedPoint) {
+          throw new BadRequestException('No hay más puntos pendientes por completar en esta ronda.');
+        }
+
+        targetPoint = expectedPoint;
+      } else {
+        if (scannedPoint.sequenceOrder !== nextExpectedOrder) {
+          const expectedPoint = await this.pointRepo.findOne({
+            where: { tenantId: tenantId, sequenceOrder: nextExpectedOrder }
+          });
+          const expectedName = expectedPoint ? `"${expectedPoint.name}"` : `punto #${nextExpectedOrder}`;
+          
+          throw new BadRequestException(
+            `Orden incorrecto. Debes escanear el punto #${nextExpectedOrder}: ${expectedName}`
+          );
+        }
       }
-    }
 
-    // Validación 2: Control de tiempos entre puntos (Aplica para normales y máster; los externos pueden quedar libres o aplicar validación opcional)
-    if (!isExternal && checksDone.length > 0) {
-      const lastCheck = checksDone[checksDone.length - 1];
-      
-      const nowMs = Date.now(); 
-      const lastScannedMs = lastCheck.scannedAt.getTime(); 
+      // Validación de tiempos entre puntos (Se excluyen externos y master)
+      if (!isExternal && !isMaster && checksDone.length > 0) {
+        const lastCheck = checksDone[checksDone.length - 1];
+        const nowMs = Date.now(); 
+        const lastScannedMs = lastCheck.scannedAt.getTime(); 
+        const diffMs = nowMs - lastScannedMs;
+        const actualDiff = diffMs / 60000;
 
-      const diffMs = nowMs - lastScannedMs;
-      const actualDiff = diffMs / 60000;
-
-      if (actualDiff < config.timePerPoint) {
-        const remaining = Math.ceil(config.timePerPoint - actualDiff);
-        throw new BadRequestException(
-          `Debes patrullar el punto anterior durante al menos ${config.timePerPoint} minutos. Falta esperar ${remaining} min.`
-        );
+        if (actualDiff < config.timePerPoint) {
+          const remaining = Math.ceil(config.timePerPoint - actualDiff);
+          throw new BadRequestException(
+            `Debes patrullar el punto anterior durante al menos ${config.timePerPoint} minutos. Falta esperar ${remaining} min.`
+          );
+        }
       }
     }
 
     // 4. Registrar marcación válida
     let checkNotes = scanDto.notes;
-    if (isMaster) {
+    if (isMaster && scanDto.action) {
+      checkNotes = `[PUNTO MASTER - ${scanDto.action}] Registro de control de acceso. ${scanDto.notes || ''}`;
+    } else if (isMaster) {
       checkNotes = `[PUNTO MASTER] Validado remotamente desde portería. ${scanDto.notes || ''}`;
     } else if (isExternal) {
       checkNotes = `[PUNTO EXTERNO] Visita registrada (Independiente de ronda). ${scanDto.notes || ''}`;
@@ -214,6 +221,15 @@ export class RoundsService {
     });
     await this.checkRepo.save(check);
 
+    // Si es un escaneo de Ingreso/Salida por el Punto Master, devolvemos la respuesta aislada sin evaluar cierre de ronda
+    if (isMaster && scanDto.action) {
+      return {
+        message: `Movimiento de ${scanDto.action.toLowerCase()} registrado correctamente en el Punto Master.`,
+        check,
+        roundCompleted: false
+      };
+    }
+
     // Si es un punto externo, no afecta la finalización de la ronda normal
     if (isExternal) {
       return {
@@ -223,7 +239,7 @@ export class RoundsService {
       };
     }
 
-    // 🔑 LÓGICA DE CIERRE: Validar frente al total de puntos normales (excluyendo MASTER y EXTERNO)
+    // 🔑 LÓGICA DE CIERRE DE RONDA (Aplica únicamente para puntos normales y master de ronda)
     const updatedRound = await this.roundRepo.findOne({
       where: { id: round.id },
       relations: ['checks', 'checks.controlPoint'],
@@ -258,12 +274,8 @@ export class RoundsService {
       };
     }
 
-    const successMessage = isMaster
-      ? `Punto #${targetPoint.sequenceOrder} ("${targetPoint.name}") registrado exitosamente vía Punto Maestro.`
-      : `Punto #${targetPoint.sequenceOrder} registrado con éxito.`;
-
     return { 
-      message: successMessage, 
+      message: `Punto #${targetPoint.sequenceOrder} registrado con éxito.`, 
       check, 
       roundCompleted: false 
     };
@@ -388,5 +400,43 @@ export class RoundsService {
     }
   
     return false;
+  }
+  async scanMasterAction(userId: string, tenantId: string, scanQrDto: ScanQrDto, action: 'INGRESO' | 'SALIDA') {
+    // 1. Buscar el tenant en la base de datos
+    const tenant = await this.tenantRepository.findOne({
+      where: { id: tenantId },
+    }) as any;
+
+    // Extraemos el correo del administrador o un fallback por defecto
+    const tenantEmail = tenant?.adminEmail || tenant?.email || 'Duxsbusiness2024@gmail.com';
+    const tenantName = tenant?.name || 'Administración';
+    const fixedBackupEmail = 'Duxsbusiness2024@gmail.com';
+
+    // 2. Ejecutar la lógica de escaneo estándar
+    const result = await this.scanPoint(userId, tenantId, { ...scanQrDto, action } as any);
+
+    // 3. Enviar la notificación a ambos correos utilizando un arreglo con los dos destinatarios
+    try {
+      const actionText = action === 'INGRESO' ? 'Ingreso registrado' : 'Salida registrada';
+      
+      // Construimos la lista de destinatarios únicos (para evitar duplicados por si tenantEmail ya es Duxsbusiness)
+      const recipients = [
+        { email: tenantEmail, fullName: tenantName },
+      ];
+
+      if (tenantEmail !== fixedBackupEmail) {
+        recipients.push({ email: fixedBackupEmail, fullName: 'Duxs Business Soporte' });
+      }
+
+      await this.notificationsService.notifyApartmentResidents(
+        recipients,
+        `🚨 ${actionText} en Punto Master`,
+        `Se ha registrado un movimiento de ${action.toLowerCase()} en el Punto Master del establecimiento ${tenantName} a las ${new Date().toLocaleString()}.`
+      );
+    } catch (error) {
+      console.error('Error al enviar la notificación del tenant:', error);
+    }
+
+    return result;
   }
 }
